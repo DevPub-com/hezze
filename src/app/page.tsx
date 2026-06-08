@@ -22,7 +22,11 @@ export default function ArchiveDashboard() {
 
   const [inputUrl, setInputUrl] = useState("");
   const [checkInterval, setCheckInterval] = useState<CheckInterval>(CheckInterval.WEEKLY);
-  const [expiryDate, setExpiryDate] = useState("");
+  const [expiryDate, setExpiryDate] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 3);
+    return d.toISOString().split("T")[0];
+  });
   const [targetDates, setTargetDates] = useState<string[]>([]);
   const [newTargetDate, setNewTargetDate] = useState("");
 
@@ -66,7 +70,9 @@ export default function ArchiveDashboard() {
       setIsCreating(false);
       setInputUrl("");
       setCheckInterval(CheckInterval.WEEKLY);
-      setExpiryDate("");
+      const threeMonthsLater = new Date();
+      threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
+      setExpiryDate(threeMonthsLater.toISOString().split("T")[0]);
       setTargetDates([]);
     } catch (error: unknown) {
       setErrorMessage(error instanceof Error ? error.message : "분석 중 오류가 발생했습니다.");

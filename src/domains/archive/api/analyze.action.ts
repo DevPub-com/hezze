@@ -239,7 +239,7 @@ ${textContent}
 
     const parsedData = JSON.parse(resultText);
     const referenceNumber = "SIG-" + Math.floor(Math.random() * 10000);
-    const defaultExpiryDate = expiryDate || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const defaultExpiryDate = expiryDate || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     const { data: archiveData, error: archiveError } = await supabase
       .from("archives")
