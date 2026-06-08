@@ -25,6 +25,8 @@ export default function ArchiveDashboard() {
   const [authPassword, setAuthPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
 
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -575,11 +577,22 @@ export default function ArchiveDashboard() {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-[24px]">
                 <div className="lg:col-span-2 space-y-[24px]">
                   <Card className="overflow-hidden border-border/50 shadow-sm hover:shadow-md transition-shadow duration-300 rounded-[12px]">
-                    <CardHeader className="bg-muted/30 border-b-[1px] border-border/50 pb-[12px]">
+                    <CardHeader className="bg-muted/30 border-b-[1px] border-border/50 pb-[12px] flex flex-row items-center justify-between">
                       <div className="flex items-center gap-[8px] text-brand-600">
                         <FileText className="w-[18px] h-[18px]" />
                         <CardTitle className="text-[15px] font-bold">핵심 주장 및 신호 정보</CardTitle>
                       </div>
+                      {selectedArchive.evidence.sourceUrl && (
+                        <a
+                          href={selectedArchive.evidence.sourceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-[4px] text-[12px] font-semibold text-brand-600 hover:underline"
+                        >
+                          <LinkIcon className="w-[14px] h-[14px]" />
+                          원본 뉴스 보기
+                        </a>
+                      )}
                     </CardHeader>
                     <CardContent className="pt-[24px]">
                       <blockquote className="border-l-[4px] border-brand-500 pl-[16px] italic text-[18px] font-medium leading-relaxed text-foreground mb-[24px]">
@@ -827,6 +840,24 @@ export default function ArchiveDashboard() {
                     </CardContent>
                   </Card>
 
+                  <Card className="border-border/50 shadow-sm rounded-[12px] bg-gradient-to-br from-brand-50 to-brand-100/30 border-brand-100">
+                    <CardHeader className="pb-[12px] border-b-[1px] border-brand-100/50">
+                      <CardTitle className="text-[14px] font-bold text-brand-900">B2B 신호 컨설팅 리포트</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-[16px] space-y-[12px]">
+                      <p className="text-[11px] text-brand-900/70 leading-relaxed">
+                        이 구매 신호의 핵심 정보, 타임라인 전개 상황, 그리고 집단지성 신뢰 지표를 정돈된 A4 양식의 PDF 컨설팅 리포트로 발행합니다.
+                      </p>
+                      <Button
+                        onClick={() => setReportModalOpen(true)}
+                        className="w-full h-[36px] bg-brand-600 hover:bg-brand-700 text-white rounded-[6px] text-[12px]"
+                      >
+                        <FileText className="w-[14px] h-[14px] mr-[4px]" />
+                        AI 분석 보고서 발행
+                      </Button>
+                    </CardContent>
+                  </Card>
+
                   <Card className="border-border/50 shadow-sm rounded-[12px]">
                     <CardHeader className="pb-[12px] border-b-[1px] border-border/50">
                       <div className="flex items-center justify-between">
@@ -976,6 +1007,156 @@ export default function ArchiveDashboard() {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {reportModalOpen && selectedArchive && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-[16px] overflow-y-auto no-print">
+          <style dangerouslySetInnerHTML={{ __html: `
+            @media print {
+              body, html {
+                background: white !important;
+                color: black !important;
+              }
+              main, header, aside, section, .no-print {
+                display: none !important;
+              }
+              #print-area {
+                display: block !important;
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100% !important;
+                padding: 40px !important;
+                box-sizing: border-box;
+              }
+            }
+          `}} />
+          <div className="bg-card w-full max-w-[800px] rounded-[12px] border-[1px] border-border shadow-lg overflow-hidden my-[40px]">
+            <div className="p-[20px] border-b-[1px] border-border flex items-center justify-between bg-muted/20">
+              <h2 className="text-[16px] font-bold text-foreground">AI 신호 분석 보고서 미리보기</h2>
+              <div className="flex items-center gap-[8px]">
+                <Button
+                  onClick={() => window.print()}
+                  className="bg-brand-600 hover:bg-brand-700 text-white rounded-[6px] text-[12px] h-[32px]"
+                >
+                  출력 / PDF 저장
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setReportModalOpen(false)}
+                  className="rounded-[6px] text-[12px] h-[32px]"
+                >
+                  닫기
+                </Button>
+              </div>
+            </div>
+
+            <div className="p-[40px] overflow-y-auto max-h-[70vh] bg-white text-slate-900 font-sans" id="print-area">
+              <div className="border-[2px] border-slate-900 p-[24px] space-y-[24px]">
+                <div className="flex justify-between items-start border-b-[2px] border-slate-900 pb-[16px]">
+                  <div>
+                    <span className="text-[11px] font-mono text-slate-500 uppercase tracking-wider block">HEZZE SIGNAL ADVISORY REPORT</span>
+                    <h1 className="text-[22px] font-extrabold text-slate-900 tracking-tight mt-[4px]">기업 신호 분석 컨설팅 보고서</h1>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] font-mono text-slate-500 block">보고서 번호: {selectedArchive.referenceNumber}</span>
+                    <span className="text-[10px] font-mono text-slate-500 block">발행 일자: {new Date().toLocaleDateString("ko-KR")}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-[16px] text-[12px] border-b-[1px] border-slate-200 pb-[16px]">
+                  <div>
+                    <span className="font-bold text-slate-500 block">신호 분류</span>
+                    <span className="font-semibold text-slate-900 mt-[2px] block">{selectedArchive.category === "ENTRY.QUOTE" ? "핵심 발언" : "공약 약속"}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-500 block">뉴스 카테고리</span>
+                    <span className="font-semibold text-slate-900 mt-[2px] block">{selectedArchive.newsCategory}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-500 block">현재 리얼리티 지수</span>
+                    <span className="font-bold text-brand-600 mt-[2px] block">{selectedArchive.realityMeter.currentIndex}% ({REALITY_STATUS_LABEL[selectedArchive.realityMeter.status]})</span>
+                  </div>
+                </div>
+
+                <div className="space-y-[8px]">
+                  <h3 className="text-[13px] font-bold text-slate-900 uppercase tracking-wider border-l-[3px] border-slate-900 pl-[8px]">1. 핵심 주장 및 신호 정보</h3>
+                  <blockquote className="bg-slate-50 border-l-[4px] border-slate-300 p-[16px] text-[14px] italic font-medium text-slate-800 leading-relaxed">
+                    &quot;{selectedArchive.coreClaim.quote}&quot;
+                  </blockquote>
+                  <div className="text-[12px] text-slate-700 mt-[8px]">
+                    <span className="font-bold">대상 인물:</span> {selectedArchive.speaker.name} ({selectedArchive.speaker.position}, {selectedArchive.speaker.organization})
+                  </div>
+                </div>
+
+                <div className="space-y-[8px]">
+                  <h3 className="text-[13px] font-bold text-slate-900 uppercase tracking-wider border-l-[3px] border-slate-900 pl-[8px]">2. 요약 및 맥락 분석</h3>
+                  <p className="text-[12px] text-slate-700 leading-relaxed bg-slate-50 p-[16px] rounded-[6px]">
+                    {selectedArchive.coreClaim.contextDescription}
+                  </p>
+                </div>
+
+                <div className="space-y-[12px]">
+                  <h3 className="text-[13px] font-bold text-slate-900 uppercase tracking-wider border-l-[3px] border-slate-900 pl-[8px]">3. 현실화 추적 연대기 (진행 경과)</h3>
+                  <div className="border-[1px] border-slate-200 rounded-[6px] overflow-hidden">
+                    <table className="w-full text-left border-collapse text-[11px]">
+                      <thead>
+                        <tr className="bg-slate-50 border-b-[1px] border-slate-200">
+                          <th className="p-[10px] font-bold text-slate-700 w-[100px]">기록일</th>
+                          <th className="p-[10px] font-bold text-slate-700 w-[120px]">출처</th>
+                          <th className="p-[10px] font-bold text-slate-700">사건 제목 및 분석 내용</th>
+                          <th className="p-[10px] font-bold text-slate-700 w-[80px] text-right">판정 지수</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedArchive.timeline.map((event) => (
+                          <tr key={event.id} className="border-b-[1px] border-slate-100 last:border-0 hover:bg-slate-50/50">
+                            <td className="p-[10px] text-slate-600 font-medium">{new Date(event.recordedAt).toLocaleDateString("ko-KR")}</td>
+                            <td className="p-[10px] text-slate-600 font-bold">{event.sourceVenue}</td>
+                            <td className="p-[10px] space-y-[4px]">
+                              <div className="font-bold text-slate-900">{event.title}</div>
+                              <div className="text-slate-600 leading-relaxed text-[10px]">{event.summary}</div>
+                            </td>
+                            <td className="p-[10px] text-slate-900 font-bold text-right">{event.realityIndex}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="space-y-[8px] border-t-[1px] border-slate-200 pt-[16px]">
+                  <h3 className="text-[13px] font-bold text-slate-900 uppercase tracking-wider border-l-[3px] border-slate-900 pl-[8px]">4. 집단지성 신뢰도 분포</h3>
+                  {(() => {
+                    const totalVotes = Object.values(selectedArchive.userVotes || {}).reduce((sum, count) => sum + count, 0);
+                    if (totalVotes === 0) {
+                      return <div className="text-[11px] text-slate-500 italic p-[10px]">등록된 시민 평가단 투표가 없습니다.</div>;
+                    }
+                    return (
+                      <div className="grid grid-cols-2 gap-[12px] bg-slate-50 p-[16px] rounded-[6px]">
+                        {(Object.entries(selectedArchive.userVotes) as [RealityStatus, number][])
+                          .filter(([, count]) => count > 0)
+                          .map(([status, count]) => {
+                            const percentage = Math.round((count / totalVotes) * 100);
+                            return (
+                              <div key={status} className="flex justify-between items-center text-[11px] border-b-[1px] border-slate-200/60 pb-[4px] last:border-0">
+                                <span className="font-bold text-slate-700">{REALITY_STATUS_LABEL[status]}</span>
+                                <span className="font-mono text-slate-900">{percentage}% ({count}명)</span>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <div className="text-center pt-[24px] border-t-[2px] border-slate-900 text-slate-500 text-[10px] font-mono">
+                  HEZZE INTELLIGENCE SIGNAL ANALYSIS ENGINE • AUTOMATICALLY GENERATED DOCUMENT
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
