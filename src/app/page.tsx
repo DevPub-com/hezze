@@ -240,7 +240,7 @@ export default function ArchiveDashboard() {
           <div className="flex items-center gap-[8px]">
             <Clock className="w-[24px] h-[24px] text-brand-600 animate-pulse" />
             <h1 className="text-[20px] font-bold tracking-tight text-foreground">
-              Hezze Signal Archiver
+              헷제 기업 구매 신호 아카이버
             </h1>
           </div>
           <Button 
@@ -356,9 +356,9 @@ export default function ArchiveDashboard() {
                           onChange={(event) => setCheckInterval(event.target.value as CheckInterval)}
                           className="w-full h-[40px] border-[1px] border-input rounded-[6px] px-[12px] bg-background text-[13px] focus:outline-none focus:ring-[2px] focus:ring-ring"
                         >
-                          <option value={CheckInterval.DAILY}>매일 (Daily)</option>
-                          <option value={CheckInterval.WEEKLY}>매주 (Weekly)</option>
-                          <option value={CheckInterval.MONTHLY}>매월 (Monthly)</option>
+                          <option value={CheckInterval.DAILY}>매일</option>
+                          <option value={CheckInterval.WEEKLY}>매주</option>
+                          <option value={CheckInterval.MONTHLY}>매월</option>
                         </select>
                       </div>
 
@@ -450,11 +450,11 @@ export default function ArchiveDashboard() {
             <div className="max-w-[1000px] mx-auto p-[24px] space-y-[24px]">
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-[24px]">
                 <div className="lg:col-span-2 space-y-[24px]">
-                  <Card className="overflow-hidden border-border/50 shadow-sm rounded-[12px]">
+                  <Card className="overflow-hidden border-border/50 shadow-sm hover:shadow-md transition-shadow duration-300 rounded-[12px]">
                     <CardHeader className="bg-muted/30 border-b-[1px] border-border/50 pb-[12px]">
                       <div className="flex items-center gap-[8px] text-brand-600">
                         <FileText className="w-[18px] h-[18px]" />
-                        <CardTitle className="text-[15px] font-bold">시그널 정보 (Core Claim)</CardTitle>
+                        <CardTitle className="text-[15px] font-bold">핵심 주장 및 신호 정보</CardTitle>
                       </div>
                     </CardHeader>
                     <CardContent className="pt-[24px]">
@@ -482,11 +482,11 @@ export default function ArchiveDashboard() {
                     </CardContent>
                   </Card>
 
-                  <Card className="border-border/50 shadow-sm rounded-[12px]">
+                  <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-300 rounded-[12px]">
                     <CardHeader className="pb-[12px] border-b-[1px] border-border/50">
                       <div className="flex items-center gap-[8px] text-muted-foreground">
                         <AlertCircle className="w-[18px] h-[18px]" />
-                        <CardTitle className="text-[15px] font-bold text-foreground">단순 요약 및 Context 분석</CardTitle>
+                        <CardTitle className="text-[15px] font-bold text-foreground">상세 요약 및 맥락 분석</CardTitle>
                       </div>
                     </CardHeader>
                     <CardContent className="pt-[16px]">
@@ -496,10 +496,10 @@ export default function ArchiveDashboard() {
                     </CardContent>
                   </Card>
 
-                  <Card className="border-border/50 shadow-sm rounded-[12px]">
+                  <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-300 rounded-[12px]">
                     <CardHeader className="pb-[12px] border-b-[1px] border-border/50">
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-[15px] font-bold">인적 평가 피드백 (Human Voting)</CardTitle>
+                        <CardTitle className="text-[15px] font-bold">시민 평가단 피드백</CardTitle>
                         <Users className="w-[16px] h-[16px] text-muted-foreground" />
                       </div>
                     </CardHeader>
@@ -529,10 +529,10 @@ export default function ArchiveDashboard() {
                     </CardContent>
                   </Card>
 
-                  <Card className="border-border/50 shadow-sm rounded-[12px]">
+                  <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-300 rounded-[12px]">
                     <CardHeader className="pb-[12px] border-b-[1px] border-border/50">
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-[15px] font-bold">현실화 추적 타임라인 (Timeline)</CardTitle>
+                        <CardTitle className="text-[15px] font-bold">현실화 추적 연대기</CardTitle>
                         <Clock className="w-[16px] h-[16px] text-muted-foreground" />
                       </div>
                     </CardHeader>
@@ -616,11 +616,11 @@ export default function ArchiveDashboard() {
                 </div>
 
                 <div className="space-y-[24px]">
-                  <Card className="border-border/50 shadow-sm relative overflow-hidden rounded-[12px]">
+                  <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-300 relative overflow-hidden rounded-[12px]">
                     <div className={cn("absolute top-0 left-0 w-full h-[4px]", getStatusIndicatorColorClass(selectedArchive.realityMeter.status))} />
                     <CardHeader className="pb-[8px] pt-[16px]">
                       <CardTitle className="text-[15px] font-bold flex justify-between items-center">
-                        Reality Meter
+                        현실화 측정기
                         <Badge className={cn("rounded-[4px] text-[11px] py-[2px] px-[6px]", getStatusColorClass(selectedArchive.realityMeter.status))}>
                           {REALITY_STATUS_LABEL[selectedArchive.realityMeter.status]}
                         </Badge>
@@ -631,7 +631,7 @@ export default function ArchiveDashboard() {
                         <span className="text-[32px] font-bold tracking-tighter text-foreground">
                           {selectedArchive.realityMeter.currentIndex}%
                         </span>
-                        <span className="text-[11px] text-muted-foreground font-semibold">Realized</span>
+                        <span className="text-[11px] text-muted-foreground font-semibold">현실화 진행도</span>
                       </div>
                       <Progress
                         value={selectedArchive.realityMeter.currentIndex}
@@ -649,7 +649,7 @@ export default function ArchiveDashboard() {
                       <div className="flex justify-between items-center text-[12px]">
                         <span className="text-muted-foreground font-medium">자동 체크 주기</span>
                         <span className="font-semibold text-foreground">
-                          {selectedArchive.checkInterval === CheckInterval.DAILY ? "매일 (Daily)" : selectedArchive.checkInterval === CheckInterval.WEEKLY ? "매주 (Weekly)" : "매월 (Monthly)"}
+                          {selectedArchive.checkInterval === CheckInterval.DAILY ? "매일" : selectedArchive.checkInterval === CheckInterval.WEEKLY ? "매주" : "매월"}
                         </span>
                       </div>
                       <div className="flex justify-between items-center text-[12px]">
@@ -695,7 +695,7 @@ export default function ArchiveDashboard() {
                   <Card className="border-border/50 shadow-sm rounded-[12px]">
                     <CardHeader className="pb-[12px] border-b-[1px] border-border/50">
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-[14px] font-bold">감시 로그 및 알림 (Notifications)</CardTitle>
+                        <CardTitle className="text-[14px] font-bold">감시 기록 및 알림</CardTitle>
                         <Bell className="w-[14px] h-[14px] text-muted-foreground" />
                       </div>
                     </CardHeader>
@@ -727,7 +727,7 @@ export default function ArchiveDashboard() {
                   <Card className="border-border/50 shadow-sm rounded-[12px]">
                     <CardHeader className="pb-[12px] border-b-[1px] border-border/50">
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-[14px] font-bold">집단 지성 신뢰 지표 (Confidence)</CardTitle>
+                        <CardTitle className="text-[14px] font-bold">집단지성 신뢰도 지표</CardTitle>
                         <Users className="w-[14px] h-[14px] text-muted-foreground" />
                       </div>
                     </CardHeader>
