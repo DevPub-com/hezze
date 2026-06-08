@@ -2,7 +2,125 @@
 
 import * as cheerio from "cheerio";
 import OpenAI from "openai";
-import { ArchiveReference, CategoryType, RealityStatus, CheckInterval, TimelineItem } from "../model/archive.model";
+import { supabase } from "@/lib/supabase";
+import { ArchiveReference, CategoryType, RealityStatus, CheckInterval, TimelineItem, NotificationLog } from "../model/archive.model";
+
+interface DBTimeline {
+  id: string;
+  recorded_at: string;
+  source_venue: string;
+  source_url: string;
+  title: string;
+  summary: string;
+  reality_index: number;
+  status: string;
+}
+
+interface DBLog {
+  id: string;
+  recorded_at: string;
+  message: string;
+}
+
+interface DBArchive {
+  id: string;
+  reference_number: string;
+  category: string;
+  news_category: string;
+  core_claim_quote: string;
+  core_claim_context: string;
+  speaker_name: string;
+  speaker_position: string;
+  speaker_organization: string;
+  reality_index: number;
+  status: string;
+  check_interval: string;
+  expiry_date: string;
+  target_dates: string[];
+  user_votes: Record<string, number>;
+  created_at: string;
+  timelines: DBTimeline[];
+  notification_logs: DBLog[];
+}
+
+export async function fetchArchivesList(): Promise<ArchiveReference[]> {
+  const { data, error } = await supabase
+    .from("archives")
+    .select(`
+      *,
+      timelines (*),
+      notification_logs (*)
+    `)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`데이터 로드 실패: ${error.message}`);
+  }
+
+  const dbArchives = (data || []) as DBArchive[];
+
+  return dbArchives.map((archive) => {
+    const timelineItems: TimelineItem[] = (archive.timelines || []).map((t) => ({
+      id: t.id,
+      recordedAt: t.recorded_at,
+      sourceVenue: t.source_venue,
+      sourceUrl: t.source_url,
+      title: t.title,
+      summary: t.summary,
+      realityIndex: t.reality_index,
+      status: t.status as RealityStatus,
+    }));
+
+    const notificationLogsList: NotificationLog[] = (archive.notification_logs || []).map((l) => ({
+      id: l.id,
+      recordedAt: l.recorded_at,
+      message: l.message,
+    }));
+
+    return {
+      id: archive.id,
+      referenceNumber: archive.reference_number,
+      category: archive.category as CategoryType,
+      newsCategory: archive.news_category,
+      coreClaim: {
+        quote: archive.core_claim_quote,
+        contextDescription: archive.core_claim_context,
+      },
+      speaker: {
+        id: "speaker-" + archive.id,
+        name: archive.speaker_name,
+        position: archive.speaker_position,
+        organization: archive.speaker_organization,
+        imageUrl: "",
+      },
+      evidence: {
+        recordedAt: archive.created_at,
+        sourceVenue: archive.speaker_organization,
+        sourceUrl: "",
+      },
+      realityMeter: {
+        currentIndex: archive.reality_index,
+        status: archive.status as RealityStatus,
+      },
+      observationStats: {
+        totalObservers: 1,
+        distribution: {
+          [RealityStatus.REALIZING]: archive.status === "REALIZING" ? 1 : 0,
+          [RealityStatus.FADING]: archive.status === "FADING" ? 1 : 0,
+          [RealityStatus.DEBATING]: archive.status === "DEBATING" ? 1 : 0,
+          [RealityStatus.DEFUNCT]: archive.status === "DEFUNCT" ? 1 : 0,
+          [RealityStatus.REALIZED]: archive.status === "REALIZED" ? 1 : 0,
+        },
+      },
+      checkInterval: archive.check_interval as CheckInterval,
+      expiryDate: archive.expiry_date,
+      targetDates: archive.target_dates || [],
+      timeline: timelineItems,
+      notificationLogs: notificationLogsList,
+      userVotes: archive.user_votes as Record<RealityStatus, number>,
+    };
+  });
+}
 
 export async function analyzeNewsUrl(
   url: string,
@@ -120,79 +238,144 @@ ${textContent}
     if (!resultText) throw new Error("AI로부터 응답을 받지 못했습니다.");
 
     const parsedData = JSON.parse(resultText);
-
-    const archiveId = "archive-" + Date.now();
-    const formattedRecordedAt = new Date().toISOString();
-
-    const initialTimelineItem: TimelineItem = {
-      id: "timeline-" + Date.now() + "-1",
-      recordedAt: formattedRecordedAt,
-      sourceVenue,
-      sourceUrl: url,
-      title: parsedData.title,
-      summary: parsedData.summary,
-      realityIndex: parsedData.realityIndex,
-      status: parsedData.status as RealityStatus,
-    };
-
+    const referenceNumber = "SIG-" + Math.floor(Math.random() * 10000);
     const defaultExpiryDate = expiryDate || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    const finalData: ArchiveReference = {
-      id: archiveId,
-      referenceNumber: "SIG-" + Math.floor(Math.random() * 10000),
-      category: CategoryType.ENTRY_QUOTE,
-      newsCategory: parsedData.newsCategory,
+    const { data: archiveData, error: archiveError } = await supabase
+      .from("archives")
+      .insert({
+        reference_number: referenceNumber,
+        category: CategoryType.ENTRY_QUOTE,
+        news_category: parsedData.newsCategory,
+        core_claim_quote: parsedData.title,
+        core_claim_context: parsedData.summary,
+        speaker_name: parsedData.speakerName,
+        speaker_position: parsedData.speakerPosition,
+        speaker_organization: parsedData.speakerOrganization,
+        reality_index: parsedData.realityIndex,
+        status: parsedData.status,
+        check_interval: checkInterval,
+        expiry_date: defaultExpiryDate,
+        target_dates: targetDates,
+        user_votes: {
+          [RealityStatus.REALIZING]: 0,
+          [RealityStatus.FADING]: 0,
+          [RealityStatus.DEBATING]: 0,
+          [RealityStatus.DEFUNCT]: 0,
+          [RealityStatus.REALIZED]: 0,
+        }
+      })
+      .select()
+      .single();
+
+    if (archiveError || !archiveData) {
+      throw new Error(`DB 저장 실패: ${archiveError?.message || "알 수 없는 오류"}`);
+    }
+
+    const { error: timelineError } = await supabase
+      .from("timelines")
+      .insert({
+        archive_id: archiveData.id,
+        source_venue: sourceVenue,
+        source_url: url,
+        title: parsedData.title,
+        summary: parsedData.summary,
+        reality_index: parsedData.realityIndex,
+        status: parsedData.status,
+      });
+
+    if (timelineError) {
+      throw new Error(`타임라인 DB 저장 실패: ${timelineError.message}`);
+    }
+
+    const { error: logError } = await supabase
+      .from("notification_logs")
+      .insert({
+        archive_id: archiveData.id,
+        message: `기사 분석 완료: 카테고리 [${parsedData.newsCategory}], 최초 현실화 지수 [${parsedData.realityIndex}%]`,
+      });
+
+    if (logError) {
+      throw new Error(`알림 로그 DB 저장 실패: ${logError.message}`);
+    }
+
+    const { data: fullArchive, error: fetchError } = await supabase
+      .from("archives")
+      .select(`
+        *,
+        timelines (*),
+        notification_logs (*)
+      `)
+      .eq("id", archiveData.id)
+      .single();
+
+    if (fetchError || !fullArchive) {
+      throw new Error(`DB 조회 실패: ${fetchError?.message || "알 수 없는 오류"}`);
+    }
+
+    const dbArchive = fullArchive as DBArchive;
+    const dbTimelines = dbArchive.timelines || [];
+    const dbLogs = dbArchive.notification_logs || [];
+
+    const timelineItems: TimelineItem[] = dbTimelines.map((t) => ({
+      id: t.id,
+      recordedAt: t.recorded_at,
+      sourceVenue: t.source_venue,
+      sourceUrl: t.source_url,
+      title: t.title,
+      summary: t.summary,
+      realityIndex: t.reality_index,
+      status: t.status as RealityStatus,
+    }));
+
+    const notificationLogsList: NotificationLog[] = dbLogs.map((l) => ({
+      id: l.id,
+      recordedAt: l.recorded_at,
+      message: l.message,
+    }));
+
+    return {
+      id: dbArchive.id,
+      referenceNumber: dbArchive.reference_number,
+      category: dbArchive.category as CategoryType,
+      newsCategory: dbArchive.news_category,
       coreClaim: {
-        quote: parsedData.title,
-        contextDescription: parsedData.summary,
+        quote: dbArchive.core_claim_quote,
+        contextDescription: dbArchive.core_claim_context,
       },
       speaker: {
-        id: "speaker-" + Date.now(),
-        name: parsedData.speakerName,
-        position: parsedData.speakerPosition,
-        organization: parsedData.speakerOrganization,
+        id: "speaker-" + dbArchive.id,
+        name: dbArchive.speaker_name,
+        position: dbArchive.speaker_position,
+        organization: dbArchive.speaker_organization,
         imageUrl: "",
       },
       evidence: {
-        recordedAt: formattedRecordedAt,
+        recordedAt: dbArchive.created_at,
         sourceVenue,
         sourceUrl: url,
       },
       realityMeter: {
-        currentIndex: parsedData.realityIndex,
-        status: parsedData.status as RealityStatus,
+        currentIndex: dbArchive.reality_index,
+        status: dbArchive.status as RealityStatus,
       },
       observationStats: {
         totalObservers: 1,
         distribution: {
-          [RealityStatus.REALIZING]: parsedData.status === "REALIZING" ? 1 : 0,
-          [RealityStatus.FADING]: parsedData.status === "FADING" ? 1 : 0,
-          [RealityStatus.DEBATING]: parsedData.status === "DEBATING" ? 1 : 0,
-          [RealityStatus.DEFUNCT]: parsedData.status === "DEFUNCT" ? 1 : 0,
-          [RealityStatus.REALIZED]: parsedData.status === "REALIZED" ? 1 : 0,
+          [RealityStatus.REALIZING]: dbArchive.status === "REALIZING" ? 1 : 0,
+          [RealityStatus.FADING]: dbArchive.status === "FADING" ? 1 : 0,
+          [RealityStatus.DEBATING]: dbArchive.status === "DEBATING" ? 1 : 0,
+          [RealityStatus.DEFUNCT]: dbArchive.status === "DEFUNCT" ? 1 : 0,
+          [RealityStatus.REALIZED]: dbArchive.status === "REALIZED" ? 1 : 0,
         },
       },
-      checkInterval,
-      expiryDate: defaultExpiryDate,
-      targetDates,
-      timeline: [initialTimelineItem],
-      notificationLogs: [
-        {
-          id: "log-" + Date.now() + "-1",
-          recordedAt: formattedRecordedAt,
-          message: `기사 분석 완료: 카테고리 [${parsedData.newsCategory}], 최초 현실화 지수 [${parsedData.realityIndex}%]`,
-        }
-      ],
-      userVotes: {
-        [RealityStatus.REALIZING]: 0,
-        [RealityStatus.FADING]: 0,
-        [RealityStatus.DEBATING]: 0,
-        [RealityStatus.DEFUNCT]: 0,
-        [RealityStatus.REALIZED]: 0,
-      },
+      checkInterval: dbArchive.check_interval as CheckInterval,
+      expiryDate: dbArchive.expiry_date,
+      targetDates: dbArchive.target_dates || [],
+      timeline: timelineItems,
+      notificationLogs: notificationLogsList,
+      userVotes: dbArchive.user_votes as Record<RealityStatus, number>,
     };
-
-    return finalData;
   } catch (error: unknown) {
     console.error("뉴스 분석 실패:", error);
     throw new Error(error instanceof Error ? error.message : "뉴스 분석에 실패했습니다.");
@@ -300,15 +483,56 @@ ${textContent}
 
     const parsedData = JSON.parse(resultText);
 
+    const { data: timelineData, error: timelineError } = await supabase
+      .from("timelines")
+      .insert({
+        archive_id: originalArchive.id,
+        source_venue: sourceVenue,
+        source_url: newArticleUrl,
+        title: parsedData.title,
+        summary: parsedData.summary,
+        reality_index: parsedData.realityIndex,
+        status: parsedData.status,
+      })
+      .select()
+      .single();
+
+    if (timelineError || !timelineData) {
+      throw new Error(`타임라인 DB 저장 실패: ${timelineError?.message || "알 수 없는 오류"}`);
+    }
+
+    const { error: archiveUpdateError } = await supabase
+      .from("archives")
+      .update({
+        reality_index: parsedData.realityIndex,
+        status: parsedData.status,
+      })
+      .eq("id", originalArchive.id);
+
+    if (archiveUpdateError) {
+      throw new Error(`아카이브 상태 갱신 실패: ${archiveUpdateError.message}`);
+    }
+
+    const { error: logError } = await supabase
+      .from("notification_logs")
+      .insert({
+        archive_id: originalArchive.id,
+        message: `관련 기사 분석을 기반으로 타임라인이 갱신되었습니다. 지수: ${parsedData.realityIndex}%, 상태: ${parsedData.status}`,
+      });
+
+    if (logError) {
+      throw new Error(`알림 로그 DB 저장 실패: ${logError.message}`);
+    }
+
     const timelineItem: TimelineItem = {
-      id: "timeline-" + Date.now(),
-      recordedAt: new Date().toISOString(),
-      sourceVenue,
-      sourceUrl: newArticleUrl,
-      title: parsedData.title,
-      summary: parsedData.summary,
-      realityIndex: parsedData.realityIndex,
-      status: parsedData.status as RealityStatus,
+      id: timelineData.id,
+      recordedAt: timelineData.recorded_at,
+      sourceVenue: timelineData.source_venue,
+      sourceUrl: timelineData.source_url,
+      title: timelineData.title,
+      summary: timelineData.summary,
+      realityIndex: timelineData.reality_index,
+      status: timelineData.status as RealityStatus,
     };
 
     return {
@@ -319,5 +543,40 @@ ${textContent}
   } catch (error: unknown) {
     console.error("타임라인 분석 실패:", error);
     throw new Error(error instanceof Error ? error.message : "타임라인 분석에 실패했습니다.");
+  }
+}
+
+export async function updateVote(
+  archiveId: string,
+  status: RealityStatus,
+  currentVotes: Record<RealityStatus, number>
+): Promise<Record<RealityStatus, number>> {
+  const updatedVotes = {
+    ...currentVotes,
+    [status]: (currentVotes[status] || 0) + 1,
+  };
+
+  const { error } = await supabase
+    .from("archives")
+    .update({
+      user_votes: updatedVotes,
+    })
+    .eq("id", archiveId);
+
+  if (error) {
+    throw new Error(`투표 반영 실패: ${error.message}`);
+  }
+
+  return updatedVotes;
+}
+
+export async function purgeAllArchives(): Promise<void> {
+  const { error } = await supabase
+    .from("archives")
+    .delete()
+    .neq("id", "00000000-0000-0000-0000-000000000000");
+
+  if (error) {
+    throw new Error(`DB 초기화 실패: ${error.message}`);
   }
 }

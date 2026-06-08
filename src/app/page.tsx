@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { REALITY_STATUS_LABEL, RealityStatus, ArchiveReference, CheckInterval } from "@/domains/archive/model/archive.model";
+import { REALITY_STATUS_LABEL, RealityStatus, ArchiveReference, CheckInterval, NotificationLog, TimelineItem } from "@/domains/archive/model/archive.model";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -9,39 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { FileText, AlertCircle, Link as LinkIcon, Users, Loader2, Search, Plus, Trash2, Bell, Clock } from "lucide-react";
-import { analyzeNewsUrl, analyzeTimelineUpdate } from "@/domains/archive/api/analyze.action";
+import { analyzeNewsUrl, analyzeTimelineUpdate, fetchArchivesList, updateVote, purgeAllArchives } from "@/domains/archive/api/analyze.action";
 
 export default function ArchiveDashboard() {
-  const [archiveList, setArchiveList] = useState<ArchiveReference[]>(() => {
-    if (typeof window !== "undefined") {
-      const savedArchives = localStorage.getItem("hezze_archives");
-      if (savedArchives) {
-        try {
-          return JSON.parse(savedArchives) as ArchiveReference[];
-        } catch {
-          return [];
-        }
-      }
-    }
-    return [];
-  });
-
-  const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(() => {
-    if (typeof window !== "undefined") {
-      const savedArchives = localStorage.getItem("hezze_archives");
-      if (savedArchives) {
-        try {
-          const parsed = JSON.parse(savedArchives) as ArchiveReference[];
-          if (parsed.length > 0) {
-            return parsed[0].id;
-          }
-        } catch {
-          return null;
-        }
-      }
-    }
-    return null;
-  });
+  const [archiveList, setArchiveList] = useState<ArchiveReference[]>([]);
+  const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -58,12 +30,21 @@ export default function ArchiveDashboard() {
   const [isTimelineLoading, setIsTimelineLoading] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const savedArchives = localStorage.getItem("hezze_archives");
-      if (!savedArchives) {
-        localStorage.setItem("hezze_archives", JSON.stringify([]));
+    async function loadInitialData() {
+      try {
+        setIsLoading(true);
+        const list = await fetchArchivesList();
+        setArchiveList(list);
+        if (list.length > 0) {
+          setSelectedArchiveId(list[0].id);
+        }
+      } catch (error: unknown) {
+        setErrorMessage(error instanceof Error ? error.message : "데이터 로드에 실패했습니다.");
+      } finally {
+        setIsLoading(false);
       }
     }
+    loadInitialData();
   }, []);
 
   const handleCreateArchive = async (event: React.FormEvent) => {
@@ -81,7 +62,6 @@ export default function ArchiveDashboard() {
       );
       const updatedList = [newArchive, ...archiveList];
       setArchiveList(updatedList);
-      localStorage.setItem("hezze_archives", JSON.stringify(updatedList));
       setSelectedArchiveId(newArchive.id);
       setIsCreating(false);
       setInputUrl("");
@@ -112,7 +92,7 @@ export default function ArchiveDashboard() {
 
       const updatedList = archiveList.map((archive) => {
         if (archive.id === selectedArchiveId) {
-          const newNotificationLog = {
+          const newNotificationLog: NotificationLog = {
             id: "log-" + Date.now(),
             recordedAt: new Date().toISOString(),
             message: `관련 기사 분석을 기반으로 타임라인이 갱신되었습니다. 지수: ${updatedRealityIndex}%, 상태: ${REALITY_STATUS_LABEL[updatedStatus]}`,
@@ -131,7 +111,6 @@ export default function ArchiveDashboard() {
       });
 
       setArchiveList(updatedList);
-      localStorage.setItem("hezze_archives", JSON.stringify(updatedList));
       setTimelineUrl("");
     } catch (error: unknown) {
       setErrorMessage(error instanceof Error ? error.message : "타임라인 분석 중 오류가 발생했습니다.");
@@ -140,31 +119,28 @@ export default function ArchiveDashboard() {
     }
   };
 
-  const handleVote = (status: RealityStatus) => {
+  const handleVote = async (status: RealityStatus) => {
     if (!selectedArchiveId) return;
-    const updatedList = archiveList.map((archive) => {
-      if (archive.id === selectedArchiveId) {
-        const currentVotes = { ...archive.userVotes };
-        currentVotes[status] = (currentVotes[status] || 0) + 1;
+    const currentArchive = archiveList.find((archive) => archive.id === selectedArchiveId);
+    if (!currentArchive) return;
 
-        const currentDistribution = { ...archive.observationStats.distribution };
-        currentDistribution[status] = (currentDistribution[status] || 0) + 1;
+    try {
+      setErrorMessage(null);
+      const updatedVotes = await updateVote(selectedArchiveId, status, currentArchive.userVotes);
 
-        const newTotalObservers = archive.observationStats.totalObservers + 1;
-
-        return {
-          ...archive,
-          userVotes: currentVotes,
-          observationStats: {
-            totalObservers: newTotalObservers,
-            distribution: currentDistribution,
-          },
-        };
-      }
-      return archive;
-    });
-    setArchiveList(updatedList);
-    localStorage.setItem("hezze_archives", JSON.stringify(updatedList));
+      const updatedList = archiveList.map((archive) => {
+        if (archive.id === selectedArchiveId) {
+          return {
+            ...archive,
+            userVotes: updatedVotes,
+          };
+        }
+        return archive;
+      });
+      setArchiveList(updatedList);
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : "투표 반영에 실패했습니다.");
+    }
   };
 
   const handleSimulatePeriodicCheck = () => {
@@ -172,7 +148,7 @@ export default function ArchiveDashboard() {
     const updatedList = archiveList.map((archive) => {
       if (archive.id === selectedArchiveId) {
         const labelText = archive.checkInterval === CheckInterval.DAILY ? "매일" : archive.checkInterval === CheckInterval.WEEKLY ? "매주" : "매월";
-        const newNotificationLog = {
+        const newNotificationLog: NotificationLog = {
           id: "log-" + Date.now(),
           recordedAt: new Date().toISOString(),
           message: `${labelText} 정기 AI 분석 스케줄이 수동으로 촉발되었습니다. 추가 변동 사항이 없습니다.`,
@@ -185,7 +161,6 @@ export default function ArchiveDashboard() {
       return archive;
     });
     setArchiveList(updatedList);
-    localStorage.setItem("hezze_archives", JSON.stringify(updatedList));
   };
 
   const handleAddTargetDate = () => {
@@ -248,12 +223,19 @@ export default function ArchiveDashboard() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
+                onClick={async () => {
                   if (confirm("정말로 모든 분석 이력 데이터를 삭제하고 초기화하시겠습니까?")) {
-                    localStorage.removeItem("hezze_archives");
-                    setArchiveList([]);
-                    setSelectedArchiveId(null);
-                    setIsCreating(false);
+                    try {
+                      setIsLoading(true);
+                      await purgeAllArchives();
+                      setArchiveList([]);
+                      setSelectedArchiveId(null);
+                      setIsCreating(false);
+                    } catch (error: unknown) {
+                      setErrorMessage(error instanceof Error ? error.message : "초기화 실패");
+                    } finally {
+                      setIsLoading(false);
+                    }
                   }
                 }}
                 className="rounded-[6px] text-[13px] border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
