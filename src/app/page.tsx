@@ -1048,19 +1048,19 @@ export default function ArchiveDashboard() {
             </div>
 
             <div className="p-[16px] sm:p-[40px] overflow-y-auto max-h-[70vh] bg-white text-slate-900 font-sans" id="print-area">
-              <div className="border-[2px] border-slate-900 p-[24px] space-y-[24px]">
-                <div className="flex justify-between items-start border-b-[2px] border-slate-900 pb-[16px]">
+              <div className="border-[1px] sm:border-[2px] border-slate-900 p-[16px] sm:p-[24px] space-y-[24px]">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b-[2px] border-slate-900 pb-[16px] gap-[12px]">
                   <div>
-                    <span className="text-[11px] font-mono text-slate-500 uppercase tracking-wider block">HEZZE SIGNAL ADVISORY REPORT</span>
-                    <h1 className="text-[22px] font-extrabold text-slate-900 tracking-tight mt-[4px]">기업 신호 분석 컨설팅 보고서</h1>
+                    <span className="text-[10px] sm:text-[11px] font-mono text-slate-500 uppercase tracking-wider block">HEZZE SIGNAL ADVISORY REPORT</span>
+                    <h1 className="text-[18px] sm:text-[22px] font-extrabold text-slate-900 tracking-tight mt-[4px]">기업 신호 분석 컨설팅 보고서</h1>
                   </div>
-                  <div className="text-right">
-                    <span className="text-[10px] font-mono text-slate-500 block">보고서 번호: {selectedArchive.referenceNumber}</span>
-                    <span className="text-[10px] font-mono text-slate-500 block">발행 일자: {new Date().toLocaleDateString("ko-KR")}</span>
+                  <div className="text-left sm:text-right shrink-0">
+                    <span className="text-[9px] sm:text-[10px] font-mono text-slate-500 block">보고서 번호: {selectedArchive.referenceNumber}</span>
+                    <span className="text-[9px] sm:text-[10px] font-mono text-slate-500 block">발행 일자: {new Date().toLocaleDateString("ko-KR")}</span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-[16px] text-[12px] border-b-[1px] border-slate-200 pb-[16px]">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-[12px] sm:gap-[16px] text-[12px] border-b-[1px] border-slate-200 pb-[16px]">
                   <div>
                     <span className="font-bold text-slate-500 block">신호 분류</span>
                     <span className="font-semibold text-slate-900 mt-[2px] block">{selectedArchive.category === "ENTRY.QUOTE" ? "핵심 발언" : "공약 약속"}</span>
@@ -1094,8 +1094,8 @@ export default function ArchiveDashboard() {
 
                 <div className="space-y-[12px]">
                   <h3 className="text-[13px] font-bold text-slate-900 uppercase tracking-wider border-l-[3px] border-slate-900 pl-[8px]">3. 현실화 추적 연대기 (진행 경과)</h3>
-                  <div className="border-[1px] border-slate-200 rounded-[6px] overflow-hidden">
-                    <table className="w-full text-left border-collapse text-[11px]">
+                  <div className="border-[1px] border-slate-200 rounded-[6px] overflow-hidden overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-[11px] min-w-[500px]">
                       <thead>
                         <tr className="bg-slate-50 border-b-[1px] border-slate-200">
                           <th className="p-[10px] font-bold text-slate-700 w-[100px]">기록일</th>
@@ -1129,7 +1129,7 @@ export default function ArchiveDashboard() {
                       return <div className="text-[11px] text-slate-500 italic p-[10px]">등록된 시민 평가단 투표가 없습니다.</div>;
                     }
                     return (
-                      <div className="grid grid-cols-2 gap-[12px] bg-slate-50 p-[16px] rounded-[6px]">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-[8px] sm:gap-[12px] bg-slate-50 p-[16px] rounded-[6px]">
                         {(Object.entries(selectedArchive.userVotes) as [RealityStatus, number][])
                           .filter(([, count]) => count > 0)
                           .map(([status, count]) => {
