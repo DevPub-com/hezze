@@ -576,9 +576,20 @@ export default function ArchiveDashboard() {
                       </div>
                     </CardHeader>
                     <CardContent className="pt-[24px]">
-                      <blockquote className="border-l-[4px] border-brand-500 pl-[16px] italic text-[18px] font-medium leading-relaxed text-foreground mb-[24px]">
-                        &quot;{selectedArchive.coreClaim.quote}&quot;
-                      </blockquote>
+                      {selectedArchive.evidence.sourceUrl ? (
+                        <a
+                          href={selectedArchive.evidence.sourceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block border-l-[4px] border-brand-500 hover:border-brand-600 pl-[16px] italic text-[18px] font-medium leading-relaxed text-foreground hover:text-brand-600 transition-colors mb-[24px] cursor-pointer"
+                        >
+                          &quot;{selectedArchive.coreClaim.quote}&quot;
+                        </a>
+                      ) : (
+                        <blockquote className="border-l-[4px] border-brand-500 pl-[16px] italic text-[18px] font-medium leading-relaxed text-foreground mb-[24px]">
+                          &quot;{selectedArchive.coreClaim.quote}&quot;
+                        </blockquote>
+                      )}
 
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-[16px] pt-[16px] border-t-[1px] border-border">
                         <div className="flex items-center gap-[12px]">
