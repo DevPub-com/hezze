@@ -289,9 +289,16 @@ export default function ArchiveDashboard() {
                   )}
                 >
                   <div className="flex items-center justify-between gap-[8px]">
-                    <Badge variant="outline" className="text-[10px] py-0 px-[6px] rounded-[4px]">
-                      {archive.category === "ENTRY.QUOTE" ? "핵심 발언" : "공약 약속"}
-                    </Badge>
+                    <div className="flex items-center gap-[4px]">
+                      <Badge variant="outline" className="text-[10px] py-0 px-[6px] rounded-[4px]">
+                        {archive.category === "ENTRY.QUOTE" ? "핵심 발언" : "공약 약속"}
+                      </Badge>
+                      {archive.newsCategory && (
+                        <Badge variant="secondary" className="text-[10px] py-0 px-[6px] rounded-[4px] bg-brand-50 text-brand-600 border-brand-100">
+                          {archive.newsCategory}
+                        </Badge>
+                      )}
+                    </div>
                     <Badge className={cn("text-[10px] py-[2px] px-[6px] rounded-[4px]", getStatusColorClass(archive.realityMeter.status))}>
                       {REALITY_STATUS_LABEL[archive.realityMeter.status]}
                     </Badge>
@@ -732,31 +739,44 @@ export default function ArchiveDashboard() {
                       </div>
                     </CardHeader>
                     <CardContent className="pt-[16px]">
-                      <div className="text-[11px] text-muted-foreground mb-[12px]">
-                        가상 관측자 {selectedArchive.observationStats.totalObservers.toLocaleString()}명 통계 기반
-                      </div>
-                      <div className="space-y-[12px]">
-                        {(Object.entries(selectedArchive.observationStats.distribution) as [RealityStatus, number][])
-                          .filter(([, count]) => count >= 0)
-                          .sort((a, b) => b[1] - a[1])
-                          .map(([status, count]) => {
-                            const total = selectedArchive.observationStats.totalObservers || 1;
-                            const percentage = Math.round((count / total) * 100);
-                            return (
-                              <div key={status} className="space-y-[4px]">
-                                <div className="flex justify-between text-[11px]">
-                                  <span className="font-semibold text-foreground">{REALITY_STATUS_LABEL[status]}</span>
-                                  <span className="text-muted-foreground font-medium">{percentage}% ({count.toLocaleString()}명)</span>
-                                </div>
-                                <Progress
-                                  value={percentage}
-                                  className="h-[6px] bg-muted/50 rounded-[9999px]"
-                                  indicatorColorClass={getStatusIndicatorColorClass(status)}
-                                />
-                              </div>
-                            );
-                          })}
-                      </div>
+                      {(() => {
+                        const totalVotes = Object.values(selectedArchive.userVotes || {}).reduce((sum, count) => sum + count, 0);
+                        if (totalVotes === 0) {
+                          return (
+                            <div className="text-[11px] text-muted-foreground/60 italic text-center py-[20px]">
+                              아직 시민 평가 투표가 없습니다. 위의 투표 버튼을 눌러 첫 의견을 남겨주십시오.
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <>
+                            <div className="text-[11px] text-muted-foreground mb-[12px]">
+                              참여 평가자 총 {totalVotes.toLocaleString()}명 실시간 투표 집계 기반
+                            </div>
+                            <div className="space-y-[12px]">
+                              {(Object.entries(selectedArchive.userVotes) as [RealityStatus, number][])
+                                .sort((a, b) => b[1] - a[1])
+                                .map(([status, count]) => {
+                                  const percentage = Math.round((count / totalVotes) * 100);
+                                  return (
+                                    <div key={status} className="space-y-[4px]">
+                                      <div className="flex justify-between text-[11px]">
+                                        <span className="font-semibold text-foreground">{REALITY_STATUS_LABEL[status]}</span>
+                                        <span className="text-muted-foreground font-medium">{percentage}% ({count.toLocaleString()}명)</span>
+                                      </div>
+                                      <Progress
+                                        value={percentage}
+                                        className="h-[6px] bg-muted/50 rounded-[9999px]"
+                                        indicatorColorClass={getStatusIndicatorColorClass(status)}
+                                      />
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </CardContent>
                   </Card>
                 </div>

@@ -44,6 +44,7 @@ export interface ArchiveReference {
   id: string;
   referenceNumber: string;
   category: CategoryType;
+  newsCategory: string;
   
   coreClaim: {
     quote: string;
