@@ -243,17 +243,36 @@ export default function ArchiveDashboard() {
               헷제 기업 구매 신호 아카이버
             </h1>
           </div>
-          <Button 
-            size="sm" 
-            onClick={() => {
-              setIsCreating(true);
-              setSelectedArchiveId(null);
-            }}
-            className="rounded-[6px] text-[13px] bg-brand-600 hover:bg-brand-700"
-          >
-            <Plus className="w-[16px] h-[16px] mr-[4px]" />
-            신규 시그널 추적
-          </Button>
+          <div className="flex items-center gap-[12px]">
+            {archiveList.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (confirm("정말로 모든 분석 이력 데이터를 삭제하고 초기화하시겠습니까?")) {
+                    localStorage.removeItem("hezze_archives");
+                    setArchiveList([]);
+                    setSelectedArchiveId(null);
+                    setIsCreating(false);
+                  }
+                }}
+                className="rounded-[6px] text-[13px] border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+              >
+                분석 이력 초기화
+              </Button>
+            )}
+            <Button 
+              size="sm" 
+              onClick={() => {
+                setIsCreating(true);
+                setSelectedArchiveId(null);
+              }}
+              className="rounded-[6px] text-[13px] bg-brand-600 hover:bg-brand-700"
+            >
+              <Plus className="w-[16px] h-[16px] mr-[4px]" />
+              신규 시그널 추적
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -470,13 +489,19 @@ export default function ArchiveDashboard() {
                       </blockquote>
 
                       <div className="flex items-center gap-[12px] pt-[16px] border-t-[1px] border-border">
-                        <div className="relative w-[48px] h-[48px] rounded-full overflow-hidden border-[1px] border-border">
-                          <img
-                            src={selectedArchive.speaker.imageUrl}
-                            alt={selectedArchive.speaker.name}
-                            className="object-cover w-full h-full"
-                          />
-                        </div>
+                        {selectedArchive.speaker.imageUrl ? (
+                          <div className="relative w-[48px] h-[48px] rounded-full overflow-hidden border-[1px] border-border shrink-0">
+                            <img
+                              src={selectedArchive.speaker.imageUrl}
+                              alt={selectedArchive.speaker.name}
+                              className="object-cover w-full h-full"
+                            />
+                          </div>
+                        ) : (
+                          <div className="w-[48px] h-[48px] rounded-full bg-gradient-to-br from-brand-500 to-brand-600 flex items-center justify-center text-white font-bold text-[16px] shrink-0 border-[1px] border-brand-100 shadow-sm">
+                            {selectedArchive.speaker.name.charAt(0)}
+                          </div>
+                        )}
                         <div>
                           <div className="font-semibold text-foreground text-[14px]">
                             {selectedArchive.speaker.name}

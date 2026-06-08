@@ -151,7 +151,7 @@ ${textContent}
         name: parsedData.speakerName,
         position: parsedData.speakerPosition,
         organization: parsedData.speakerOrganization,
-        imageUrl: "https://images.unsplash.com/photo-1507679799987-c73779587ccf?q=80&w=150&auto=format&fit=crop",
+        imageUrl: "",
       },
       evidence: {
         recordedAt: formattedRecordedAt,
