@@ -446,7 +446,7 @@ export default function ArchiveDashboard() {
           )}
 
           {isCreating ? (
-            <div className="max-w-[700px] mx-auto my-[40px] px-[24px]">
+            <div className="max-w-[700px] mx-auto my-[20px] sm:my-[40px] px-[16px] sm:px-[24px]">
               <Card className="border-border/60 shadow-md rounded-[12px]">
                 <CardHeader className="border-b-[1px] border-border/50 pb-[16px]">
                   <CardTitle className="text-[18px] font-bold">새로운 뉴스 시그널 등록 및 스케줄 설정</CardTitle>
@@ -565,9 +565,9 @@ export default function ArchiveDashboard() {
               </Card>
             </div>
           ) : selectedArchive ? (
-            <div className="max-w-[1000px] mx-auto p-[24px] space-y-[24px]">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-[24px]">
-                <div className="lg:col-span-2 space-y-[24px]">
+            <div className="max-w-[1000px] mx-auto p-[16px] sm:p-[24px] space-y-[16px] sm:space-y-[24px]">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-[16px] sm:gap-[24px]">
+                <div className="lg:col-span-2 space-y-[16px] sm:space-y-[24px]">
                   <Card className="overflow-hidden border-border/50 shadow-sm hover:shadow-md transition-shadow duration-300 rounded-[12px]">
                     <CardHeader className="bg-muted/30 border-b-[1px] border-border/50 pb-[12px]">
                       <div className="flex items-center gap-[8px] text-brand-600">
@@ -681,46 +681,69 @@ export default function ArchiveDashboard() {
                     <CardContent className="pt-[20px] space-y-[24px]">
                       <div className="relative border-l-[2px] border-border/60 ml-[10px] pl-[20px] space-y-[24px]">
                         {selectedArchive.timeline.map((event) => (
-                          <div key={event.id} className="relative">
+                          <div key={event.id} className="relative group">
                             <div className={cn(
-                              "absolute left-[-27px] top-[4px] w-[12px] h-[12px] rounded-full ring-[4px] ring-background",
+                              "absolute left-[-27px] top-[12px] w-[12px] h-[12px] rounded-full ring-[4px] ring-background z-10",
                               getStatusIndicatorColorClass(event.status)
                             )} />
-                            <div className="space-y-[6px]">
-                              <div className="flex flex-wrap items-center gap-[6px] text-[11px]">
-                                <span className="font-semibold text-muted-foreground">
-                                  {new Date(event.recordedAt).toLocaleDateString("ko-KR", {
-                                    year: "numeric",
-                                    month: "long",
-                                    day: "numeric"
-                                  })}
-                                </span>
-                                <span className="text-border">|</span>
-                                <span className="text-muted-foreground font-medium flex items-center gap-[2px]">
-                                  <LinkIcon className="w-[10px] h-[10px]" />
-                                  {event.sourceVenue}
-                                </span>
-                                {event.sourceUrl && (
-                                  <a
-                                    href={event.sourceUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-brand-600 hover:underline inline-flex items-center gap-[2px]"
-                                  >
-                                    기사 보기
-                                  </a>
-                                )}
+                            {event.sourceUrl ? (
+                              <a
+                                href={event.sourceUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block space-y-[6px] hover:bg-muted/40 p-[8px] -m-[8px] rounded-[6px] transition-colors"
+                              >
+                                <div className="flex flex-wrap items-center gap-[6px] text-[11px]">
+                                  <span className="font-semibold text-muted-foreground">
+                                    {new Date(event.recordedAt).toLocaleDateString("ko-KR", {
+                                      year: "numeric",
+                                      month: "long",
+                                      day: "numeric"
+                                    })}
+                                  </span>
+                                  <span className="text-border">|</span>
+                                  <span className="text-muted-foreground font-medium flex items-center gap-[2px]">
+                                    <LinkIcon className="w-[10px] h-[10px]" />
+                                    {event.sourceVenue}
+                                  </span>
+                                </div>
+                                <h4 className="text-[13px] font-bold text-foreground flex items-center gap-[8px] group-hover:text-brand-600 transition-colors">
+                                  {event.title}
+                                  <Badge className={cn("text-[9px] py-0 px-[4px] rounded-[3px]", getStatusColorClass(event.status))}>
+                                    리얼리티 {event.realityIndex}%
+                                  </Badge>
+                                </h4>
+                                <p className="text-[12px] text-muted-foreground leading-relaxed">
+                                  {event.summary}
+                                </p>
+                              </a>
+                            ) : (
+                              <div className="space-y-[6px]">
+                                <div className="flex flex-wrap items-center gap-[6px] text-[11px]">
+                                  <span className="font-semibold text-muted-foreground">
+                                    {new Date(event.recordedAt).toLocaleDateString("ko-KR", {
+                                      year: "numeric",
+                                      month: "long",
+                                      day: "numeric"
+                                    })}
+                                  </span>
+                                  <span className="text-border">|</span>
+                                  <span className="text-muted-foreground font-medium flex items-center gap-[2px]">
+                                    <LinkIcon className="w-[10px] h-[10px]" />
+                                    {event.sourceVenue}
+                                  </span>
+                                </div>
+                                <h4 className="text-[13px] font-bold text-foreground flex items-center gap-[8px]">
+                                  {event.title}
+                                  <Badge className={cn("text-[9px] py-0 px-[4px] rounded-[3px]", getStatusColorClass(event.status))}>
+                                    리얼리티 {event.realityIndex}%
+                                  </Badge>
+                                </h4>
+                                <p className="text-[12px] text-muted-foreground leading-relaxed">
+                                  {event.summary}
+                                </p>
                               </div>
-                              <h4 className="text-[13px] font-bold text-foreground flex items-center gap-[8px]">
-                                {event.title}
-                                <Badge className={cn("text-[9px] py-0 px-[4px] rounded-[3px]", getStatusColorClass(event.status))}>
-                                  리얼리티 {event.realityIndex}%
-                                </Badge>
-                              </h4>
-                              <p className="text-[12px] text-muted-foreground leading-relaxed">
-                                {event.summary}
-                              </p>
-                            </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -757,7 +780,7 @@ export default function ArchiveDashboard() {
                   </Card>
                 </div>
 
-                <div className="space-y-[24px]">
+                <div className="space-y-[16px] sm:space-y-[24px]">
                   <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-300 relative overflow-hidden rounded-[12px]">
                     <div className={cn("absolute top-0 left-0 w-full h-[4px]", getStatusIndicatorColorClass(selectedArchive.realityMeter.status))} />
                     <CardHeader className="pb-[8px] pt-[16px]">
