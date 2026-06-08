@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { REALITY_STATUS_LABEL, RealityStatus, ArchiveReference, CheckInterval, NotificationLog, TimelineItem } from "@/domains/archive/model/archive.model";
+import { User } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
+import { REALITY_STATUS_LABEL, RealityStatus, ArchiveReference, CheckInterval, NotificationLog } from "@/domains/archive/model/archive.model";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -9,11 +11,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { FileText, AlertCircle, Link as LinkIcon, Users, Loader2, Search, Plus, Trash2, Bell, Clock } from "lucide-react";
-import { analyzeNewsUrl, analyzeTimelineUpdate, fetchArchivesList, updateVote, purgeAllArchives } from "@/domains/archive/api/analyze.action";
+import { analyzeNewsUrl, analyzeTimelineUpdate, fetchArchivesList, updateVote, purgeAllArchives, fetchUserVote } from "@/domains/archive/api/analyze.action";
 
 export default function ArchiveDashboard() {
   const [archiveList, setArchiveList] = useState<ArchiveReference[]>([]);
   const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null);
+
+  const [user, setUser] = useState<User | null>(null);
+  const [userVote, setUserVote] = useState<RealityStatus | null>(null);
+
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [isSignUp, setIsSignUp] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -50,6 +60,73 @@ export default function ArchiveDashboard() {
     }
     loadInitialData();
   }, []);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    async function loadUserVote() {
+      if (!selectedArchiveId || !user) {
+        setUserVote(null);
+        return;
+      }
+      try {
+        const vote = await fetchUserVote(selectedArchiveId, user.id);
+        setUserVote(vote);
+      } catch {
+        setUserVote(null);
+      }
+    }
+    loadUserVote();
+  }, [selectedArchiveId, user]);
+
+  const handleAuthSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setErrorMessage(null);
+    try {
+      setIsLoading(true);
+      if (isSignUp) {
+        const { error } = await supabase.auth.signUp({
+          email: authEmail,
+          password: authPassword,
+        });
+        if (error) throw error;
+        alert("가입 성공! 로그인되었습니다.");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: authEmail,
+          password: authPassword,
+        });
+        if (error) throw error;
+      }
+      setAuthModalOpen(false);
+      setAuthEmail("");
+      setAuthPassword("");
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : "인증 처리 실패");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+      setUserVote(null);
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : "로그아웃 실패");
+    }
+  };
 
   const handleCreateArchive = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -126,13 +203,18 @@ export default function ArchiveDashboard() {
   };
 
   const handleVote = async (status: RealityStatus) => {
+    if (!user) {
+      setIsSignUp(false);
+      setAuthModalOpen(true);
+      return;
+    }
     if (!selectedArchiveId) return;
     const currentArchive = archiveList.find((archive) => archive.id === selectedArchiveId);
     if (!currentArchive) return;
 
     try {
       setErrorMessage(null);
-      const updatedVotes = await updateVote(selectedArchiveId, status, currentArchive.userVotes);
+      const updatedVotes = await updateVote(selectedArchiveId, status, currentArchive.userVotes, user.id);
 
       const updatedList = archiveList.map((archive) => {
         if (archive.id === selectedArchiveId) {
@@ -144,6 +226,7 @@ export default function ArchiveDashboard() {
         return archive;
       });
       setArchiveList(updatedList);
+      setUserVote(status);
     } catch (error: unknown) {
       setErrorMessage(error instanceof Error ? error.message : "투표 반영에 실패했습니다.");
     }
@@ -225,6 +308,33 @@ export default function ArchiveDashboard() {
             </h1>
           </div>
           <div className="flex items-center gap-[12px]">
+            {user ? (
+              <div className="flex items-center gap-[12px]">
+                <span className="text-[12px] text-muted-foreground font-semibold">
+                  {user.email}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSignOut}
+                  className="rounded-[6px] text-[13px] hover:bg-muted"
+                >
+                  로그아웃
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsSignUp(false);
+                  setAuthModalOpen(true);
+                }}
+                className="rounded-[6px] text-[13px]"
+              >
+                로그인 / 가입
+              </Button>
+            )}
             {archiveList.length > 0 && (
               <Button
                 variant="outline"
@@ -534,7 +644,12 @@ export default function ArchiveDashboard() {
                             <button
                               key={status}
                               onClick={() => handleVote(status)}
-                              className="flex flex-col items-center justify-center p-[10px] rounded-[6px] border-[1px] border-border bg-card hover:bg-muted/40 transition-colors gap-[4px] text-center"
+                              className={cn(
+                                "flex flex-col items-center justify-center p-[10px] rounded-[6px] border-[1px] transition-colors gap-[4px] text-center",
+                                userVote === status
+                                  ? "border-brand-500 bg-brand-50/50 text-brand-600 font-bold"
+                                  : "border-border bg-card hover:bg-muted/40"
+                              )}
                             >
                               <span className="text-[11px] font-semibold text-foreground">
                                 {REALITY_STATUS_LABEL[status]}
@@ -806,6 +921,64 @@ export default function ArchiveDashboard() {
           )}
         </section>
       </div>
+
+      {authModalOpen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-[16px]">
+          <div className="bg-card w-full max-w-[400px] rounded-[12px] border-[1px] border-border shadow-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-[24px] border-b-[1px] border-border">
+              <h2 className="text-[18px] font-bold text-foreground">
+                {isSignUp ? "헷제 서비스 회원가입" : "헷제 서비스 로그인"}
+              </h2>
+              <p className="text-[12px] text-muted-foreground mt-[2px]">
+                시민 평가단 피드백 투표에 참여하기 위해 접속해 주십시오.
+              </p>
+            </div>
+            <form onSubmit={handleAuthSubmit} className="p-[24px] space-y-[16px]">
+              <div className="space-y-[6px]">
+                <label className="text-[12px] font-semibold text-foreground">이메일 주소</label>
+                <Input
+                  type="email"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  placeholder="name@company.com"
+                  required
+                />
+              </div>
+              <div className="space-y-[6px]">
+                <label className="text-[12px] font-semibold text-foreground">비밀번호</label>
+                <Input
+                  type="password"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-[8px] pt-[8px]">
+                <Button type="submit" className="w-full bg-brand-600 hover:bg-brand-700 text-white rounded-[6px] h-[40px] text-[13px]">
+                  {isSignUp ? "가입 및 로그인" : "로그인하기"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setIsSignUp(!isSignUp)}
+                  className="w-full text-[12px] text-brand-600 hover:text-brand-700"
+                >
+                  {isSignUp ? "이미 계정이 있으신가요? 로그인" : "계정이 없으신가요? 회원가입"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setAuthModalOpen(false)}
+                  className="w-full text-[12px] rounded-[6px]"
+                >
+                  닫기
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

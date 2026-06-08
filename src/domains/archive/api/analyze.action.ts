@@ -549,25 +549,85 @@ ${textContent}
 export async function updateVote(
   archiveId: string,
   status: RealityStatus,
-  currentVotes: Record<RealityStatus, number>
+  currentVotes: Record<RealityStatus, number>,
+  userId: string
 ): Promise<Record<RealityStatus, number>> {
-  const updatedVotes = {
-    ...currentVotes,
-    [status]: (currentVotes[status] || 0) + 1,
-  };
+  const { data: existingVote, error: selectError } = await supabase
+    .from("votes")
+    .select("status")
+    .eq("archive_id", archiveId)
+    .eq("user_id", userId)
+    .maybeSingle();
 
-  const { error } = await supabase
+  if (selectError) {
+    throw new Error(`기존 투표 조회 실패: ${selectError.message}`);
+  }
+
+  const updatedVotes = { ...currentVotes };
+
+  if (!existingVote) {
+    const { error: insertError } = await supabase
+      .from("votes")
+      .insert({
+        archive_id: archiveId,
+        user_id: userId,
+        status: status,
+      });
+
+    if (insertError) {
+      throw new Error(`투표 저장 실패: ${insertError.message}`);
+    }
+
+    updatedVotes[status] = (updatedVotes[status] || 0) + 1;
+  } else {
+    const oldStatus = existingVote.status as RealityStatus;
+    if (oldStatus === status) {
+      return currentVotes;
+    }
+
+    const { error: updateError } = await supabase
+      .from("votes")
+      .update({ status: status })
+      .eq("archive_id", archiveId)
+      .eq("user_id", userId);
+
+    if (updateError) {
+      throw new Error(`투표 변경 실패: ${updateError.message}`);
+    }
+
+    updatedVotes[oldStatus] = Math.max(0, (updatedVotes[oldStatus] || 0) - 1);
+    updatedVotes[status] = (updatedVotes[status] || 0) + 1;
+  }
+
+  const { error: archiveUpdateError } = await supabase
     .from("archives")
     .update({
       user_votes: updatedVotes,
     })
     .eq("id", archiveId);
 
-  if (error) {
-    throw new Error(`투표 반영 실패: ${error.message}`);
+  if (archiveUpdateError) {
+    throw new Error(`아카이브 집계 갱신 실패: ${archiveUpdateError.message}`);
   }
 
   return updatedVotes;
+}
+
+export async function fetchUserVote(
+  archiveId: string,
+  userId: string
+): Promise<RealityStatus | null> {
+  const { data, error } = await supabase
+    .from("votes")
+    .select("status")
+    .eq("archive_id", archiveId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    return null;
+  }
+  return data ? (data.status as RealityStatus) : null;
 }
 
 export async function purgeAllArchives(): Promise<void> {
