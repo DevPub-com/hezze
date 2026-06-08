@@ -303,15 +303,15 @@ export default function ArchiveDashboard() {
 
   return (
     <main className="min-h-screen bg-background font-sans">
-      <header className="border-b-[1px] border-border bg-card px-[24px] py-[16px]">
-        <div className="max-w-[1400px] mx-auto flex items-center justify-between">
+      <header className="border-b-[1px] border-border bg-card px-[16px] sm:px-[24px] py-[12px] sm:py-[16px]">
+        <div className="max-w-[1400px] mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-[12px]">
           <div className="flex items-center gap-[8px]">
-            <Clock className="w-[24px] h-[24px] text-brand-600 animate-pulse" />
-            <h1 className="text-[20px] font-bold tracking-tight text-foreground">
+            <Clock className="w-[20px] h-[20px] sm:w-[24px] sm:h-[24px] text-brand-600 animate-pulse shrink-0" />
+            <h1 className="text-[16px] sm:text-[20px] font-bold tracking-tight text-foreground whitespace-nowrap">
               헷제 기업 구매 신호 아카이버
             </h1>
           </div>
-          <div className="flex items-center gap-[12px]">
+          <div className="flex items-center gap-[8px] sm:gap-[12px] flex-wrap justify-start sm:justify-end w-full sm:w-auto">
             {user ? (
               <div className="flex items-center gap-[12px]">
                 <span className="text-[12px] text-muted-foreground font-semibold">
@@ -379,7 +379,7 @@ export default function ArchiveDashboard() {
         </div>
       </header>
 
-      <div className="max-w-[1400px] mx-auto flex flex-col lg:flex-row h-[calc(100vh-73px)] overflow-hidden">
+      <div className="max-w-[1400px] mx-auto flex flex-col lg:flex-row h-[calc(100vh-100px)] lg:h-[calc(100vh-73px)] overflow-hidden">
         <aside className={cn("w-full lg:w-[380px] shrink-0 border-r-[1px] border-border bg-card flex flex-col h-full", mobileView === "list" ? "flex" : "hidden lg:flex")}>
           <div className="p-[16px] border-b-[1px] border-border space-y-[12px]">
             <div className="relative">
