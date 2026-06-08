@@ -11,6 +11,35 @@ export enum CategoryType {
   ENTRY_PROMISE = 'ENTRY.PROMISE',
 }
 
+export enum CheckInterval {
+  DAILY = 'DAILY',
+  WEEKLY = 'WEEKLY',
+  MONTHLY = 'MONTHLY',
+}
+
+export const CHECK_INTERVAL_LABEL: Record<CheckInterval, string> = {
+  [CheckInterval.DAILY]: '매일',
+  [CheckInterval.WEEKLY]: '매주',
+  [CheckInterval.MONTHLY]: '매월',
+};
+
+export interface TimelineItem {
+  id: string;
+  recordedAt: string;
+  sourceVenue: string;
+  sourceUrl: string;
+  title: string;
+  summary: string;
+  realityIndex: number;
+  status: RealityStatus;
+}
+
+export interface NotificationLog {
+  id: string;
+  recordedAt: string;
+  message: string;
+}
+
 export interface ArchiveReference {
   id: string;
   referenceNumber: string;
@@ -44,6 +73,13 @@ export interface ArchiveReference {
     totalObservers: number;
     distribution: Record<RealityStatus, number>;
   };
+
+  checkInterval: CheckInterval;
+  expiryDate: string;
+  targetDates: string[];
+  timeline: TimelineItem[];
+  notificationLogs: NotificationLog[];
+  userVotes: Record<RealityStatus, number>;
 }
 
 export const REALITY_STATUS_LABEL: Record<RealityStatus, string> = {
@@ -53,3 +89,4 @@ export const REALITY_STATUS_LABEL: Record<RealityStatus, string> = {
   [RealityStatus.DEFUNCT]: '완전 소멸',
   [RealityStatus.REALIZED]: '완전 현실화',
 };
+
