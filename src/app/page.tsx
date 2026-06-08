@@ -10,12 +10,13 @@ import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { FileText, AlertCircle, Link as LinkIcon, Users, Loader2, Search, Plus, Trash2, Bell, Clock } from "lucide-react";
+import { FileText, AlertCircle, Link as LinkIcon, Users, Loader2, Search, Plus, Trash2, Bell, Clock, ArrowLeft } from "lucide-react";
 import { analyzeNewsUrl, analyzeTimelineUpdate, fetchArchivesList, updateVote, purgeAllArchives, fetchUserVote } from "@/domains/archive/api/analyze.action";
 
 export default function ArchiveDashboard() {
   const [archiveList, setArchiveList] = useState<ArchiveReference[]>([]);
   const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null);
+  const [mobileView, setMobileView] = useState<"list" | "detail">("list");
 
   const [user, setUser] = useState<User | null>(null);
   const [userVote, setUserVote] = useState<RealityStatus | null>(null);
@@ -146,6 +147,7 @@ export default function ArchiveDashboard() {
       const updatedList = [newArchive, ...archiveList];
       setArchiveList(updatedList);
       setSelectedArchiveId(newArchive.id);
+      setMobileView("detail");
       setIsCreating(false);
       setInputUrl("");
       setCheckInterval(CheckInterval.WEEKLY);
@@ -366,6 +368,7 @@ export default function ArchiveDashboard() {
               onClick={() => {
                 setIsCreating(true);
                 setSelectedArchiveId(null);
+                setMobileView("detail");
               }}
               className="rounded-[6px] text-[13px] bg-brand-600 hover:bg-brand-700"
             >
@@ -377,7 +380,7 @@ export default function ArchiveDashboard() {
       </header>
 
       <div className="max-w-[1400px] mx-auto flex flex-col lg:flex-row h-[calc(100vh-73px)] overflow-hidden">
-        <aside className="w-full lg:w-[380px] shrink-0 border-r-[1px] border-border bg-card flex flex-col h-full">
+        <aside className={cn("w-full lg:w-[380px] shrink-0 border-r-[1px] border-border bg-card flex flex-col h-full", mobileView === "list" ? "flex" : "hidden lg:flex")}>
           <div className="p-[16px] border-b-[1px] border-border space-y-[12px]">
             <div className="relative">
               <Search className="absolute left-[12px] top-[10px] w-[16px] h-[16px] text-muted-foreground" />
@@ -401,6 +404,7 @@ export default function ArchiveDashboard() {
                     setSelectedArchiveId(archive.id);
                     setIsCreating(false);
                     setErrorMessage(null);
+                    setMobileView("detail");
                   }}
                   className={cn(
                     "w-full text-left p-[16px] transition-colors flex flex-col gap-[8px]",
@@ -447,7 +451,18 @@ export default function ArchiveDashboard() {
           </div>
         </aside>
 
-        <section className="flex-1 overflow-y-auto bg-muted/20 h-full">
+        <section className={cn("flex-1 overflow-y-auto bg-muted/20 h-full", mobileView === "detail" ? "block" : "hidden lg:block")}>
+          <div className="lg:hidden px-[24px] pt-[24px] pb-0">
+            <Button
+              variant="ghost"
+              onClick={() => setMobileView("list")}
+              className="flex items-center gap-[6px] text-[13px] text-muted-foreground hover:text-foreground pl-0 h-[44px]"
+            >
+              <ArrowLeft className="w-[16px] h-[16px]" />
+              목록으로 돌아가기
+            </Button>
+          </div>
+
           {errorMessage && (
             <div className="m-[24px] p-[16px] bg-red-50 text-red-600 rounded-[8px] border-[1px] border-red-200 text-[13px]">
               {errorMessage}
@@ -548,6 +563,7 @@ export default function ArchiveDashboard() {
                           if (archiveList.length > 0) {
                             setSelectedArchiveId(archiveList[0].id);
                           }
+                          setMobileView("list");
                         }}
                         className="rounded-[6px] h-[40px] text-[13px]"
                       >
@@ -1053,7 +1069,7 @@ export default function ArchiveDashboard() {
               </div>
             </div>
 
-            <div className="p-[40px] overflow-y-auto max-h-[70vh] bg-white text-slate-900 font-sans" id="print-area">
+            <div className="p-[16px] sm:p-[40px] overflow-y-auto max-h-[70vh] bg-white text-slate-900 font-sans" id="print-area">
               <div className="border-[2px] border-slate-900 p-[24px] space-y-[24px]">
                 <div className="flex justify-between items-start border-b-[2px] border-slate-900 pb-[16px]">
                   <div>
