@@ -339,30 +339,6 @@ export default function ArchiveDashboard() {
                 로그인 / 가입
               </Button>
             )}
-            {archiveList.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  if (confirm("정말로 모든 분석 이력 데이터를 삭제하고 초기화하시겠습니까?")) {
-                    try {
-                      setIsLoading(true);
-                      await purgeAllArchives();
-                      setArchiveList([]);
-                      setSelectedArchiveId(null);
-                      setIsCreating(false);
-                    } catch (error: unknown) {
-                      setErrorMessage(error instanceof Error ? error.message : "초기화 실패");
-                    } finally {
-                      setIsLoading(false);
-                    }
-                  }
-                }}
-                className="rounded-[6px] text-[13px] border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-              >
-                분석 이력 초기화
-              </Button>
-            )}
             <Button 
               size="sm" 
               onClick={() => {
@@ -593,50 +569,52 @@ export default function ArchiveDashboard() {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-[24px]">
                 <div className="lg:col-span-2 space-y-[24px]">
                   <Card className="overflow-hidden border-border/50 shadow-sm hover:shadow-md transition-shadow duration-300 rounded-[12px]">
-                    <CardHeader className="bg-muted/30 border-b-[1px] border-border/50 pb-[12px] flex flex-row items-center justify-between">
+                    <CardHeader className="bg-muted/30 border-b-[1px] border-border/50 pb-[12px]">
                       <div className="flex items-center gap-[8px] text-brand-600">
                         <FileText className="w-[18px] h-[18px]" />
                         <CardTitle className="text-[15px] font-bold">핵심 주장 및 신호 정보</CardTitle>
                       </div>
-                      {selectedArchive.evidence.sourceUrl && (
-                        <a
-                          href={selectedArchive.evidence.sourceUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-[4px] text-[12px] font-semibold text-brand-600 hover:underline"
-                        >
-                          <LinkIcon className="w-[14px] h-[14px]" />
-                          원본 뉴스 보기
-                        </a>
-                      )}
                     </CardHeader>
                     <CardContent className="pt-[24px]">
                       <blockquote className="border-l-[4px] border-brand-500 pl-[16px] italic text-[18px] font-medium leading-relaxed text-foreground mb-[24px]">
                         &quot;{selectedArchive.coreClaim.quote}&quot;
                       </blockquote>
 
-                      <div className="flex items-center gap-[12px] pt-[16px] border-t-[1px] border-border">
-                        {selectedArchive.speaker.imageUrl ? (
-                          <div className="relative w-[48px] h-[48px] rounded-full overflow-hidden border-[1px] border-border shrink-0">
-                            <img
-                              src={selectedArchive.speaker.imageUrl}
-                              alt={selectedArchive.speaker.name}
-                              className="object-cover w-full h-full"
-                            />
-                          </div>
-                        ) : (
-                          <div className="w-[48px] h-[48px] rounded-full bg-gradient-to-br from-brand-500 to-brand-600 flex items-center justify-center text-white font-bold text-[16px] shrink-0 border-[1px] border-brand-100 shadow-sm">
-                            {selectedArchive.speaker.name.charAt(0)}
-                          </div>
-                        )}
-                        <div>
-                          <div className="font-semibold text-foreground text-[14px]">
-                            {selectedArchive.speaker.name}
-                          </div>
-                          <div className="text-[12px] text-muted-foreground">
-                            {selectedArchive.speaker.position}, {selectedArchive.speaker.organization}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-[16px] pt-[16px] border-t-[1px] border-border">
+                        <div className="flex items-center gap-[12px]">
+                          {selectedArchive.speaker.imageUrl ? (
+                            <div className="relative w-[48px] h-[48px] rounded-full overflow-hidden border-[1px] border-border shrink-0">
+                              <img
+                                src={selectedArchive.speaker.imageUrl}
+                                alt={selectedArchive.speaker.name}
+                                className="object-cover w-full h-full"
+                              />
+                            </div>
+                          ) : (
+                            <div className="w-[48px] h-[48px] rounded-full bg-gradient-to-br from-brand-500 to-brand-600 flex items-center justify-center text-white font-bold text-[16px] shrink-0 border-[1px] border-brand-100 shadow-sm">
+                              {selectedArchive.speaker.name.charAt(0)}
+                            </div>
+                          )}
+                          <div>
+                            <div className="font-semibold text-foreground text-[14px]">
+                              {selectedArchive.speaker.name}
+                            </div>
+                            <div className="text-[12px] text-muted-foreground">
+                              {selectedArchive.speaker.position}, {selectedArchive.speaker.organization}
+                            </div>
                           </div>
                         </div>
+
+                        {selectedArchive.evidence.sourceUrl && (
+                          <a
+                            href={selectedArchive.evidence.sourceUrl}
+                            target="_blank; noreferrer"
+                            className="inline-flex items-center justify-center gap-[6px] rounded-[6px] text-[12px] font-semibold border-[1px] border-brand-200 text-brand-600 hover:bg-brand-50 shrink-0 w-full sm:w-auto h-[36px] px-[12px] transition-colors"
+                          >
+                            <LinkIcon className="w-[14px] h-[14px]" />
+                            원본 기사 바로가기
+                          </a>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
