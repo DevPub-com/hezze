@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { User } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabase";
+import { getSupabaseClient } from "@/lib/supabase";
 import { REALITY_STATUS_LABEL, RealityStatus, ArchiveReference, CheckInterval, NotificationLog } from "@/domains/archive/model/archive.model";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { FileText, AlertCircle, Link as LinkIcon, Users, Loader2, Search, Plus, Trash2, Bell, Clock, ArrowLeft } from "lucide-react";
 import { analyzeNewsUrl, analyzeTimelineUpdate, fetchArchivesList, updateVote, purgeAllArchives, fetchUserVote } from "@/domains/archive/api/analyze.action";
+
+export const dynamic = "force-dynamic";
 
 export default function ArchiveDashboard() {
   const [archiveList, setArchiveList] = useState<ArchiveReference[]>([]);
@@ -65,11 +67,11 @@ export default function ArchiveDashboard() {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    getSupabaseClient().auth.getUser().then(({ data: { user } }) => {
       setUser(user);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = getSupabaseClient().auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
 
@@ -98,14 +100,14 @@ export default function ArchiveDashboard() {
     try {
       setIsLoading(true);
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
+        const { error } = await getSupabaseClient().auth.signUp({
           email: authEmail,
           password: authPassword,
         });
         if (error) throw error;
         alert("가입 성공! 로그인되었습니다.");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { error } = await getSupabaseClient().auth.signInWithPassword({
           email: authEmail,
           password: authPassword,
         });
@@ -123,7 +125,7 @@ export default function ArchiveDashboard() {
 
   const handleSignOut = async () => {
     try {
-      await supabase.auth.signOut();
+      await getSupabaseClient().auth.signOut();
       setUser(null);
       setUserVote(null);
     } catch (error: unknown) {

@@ -2,7 +2,7 @@
 
 import * as cheerio from "cheerio";
 import OpenAI from "openai";
-import { supabase } from "@/lib/supabase";
+import { getSupabaseClient } from "@/lib/supabase";
 import { ArchiveReference, CategoryType, RealityStatus, CheckInterval, TimelineItem, NotificationLog } from "../model/archive.model";
 
 interface DBTimeline {
@@ -44,7 +44,7 @@ interface DBArchive {
 }
 
 export async function fetchArchivesList(): Promise<ArchiveReference[]> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseClient()
     .from("archives")
     .select(`
       *,
@@ -241,7 +241,7 @@ ${textContent}
     const referenceNumber = "SIG-" + Math.floor(Math.random() * 10000);
     const defaultExpiryDate = expiryDate || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    const { data: archiveData, error: archiveError } = await supabase
+    const { data: archiveData, error: archiveError } = await getSupabaseClient()
       .from("archives")
       .insert({
         reference_number: referenceNumber,
@@ -272,7 +272,7 @@ ${textContent}
       throw new Error(`DB 저장 실패: ${archiveError?.message || "알 수 없는 오류"}`);
     }
 
-    const { error: timelineError } = await supabase
+    const { error: timelineError } = await getSupabaseClient()
       .from("timelines")
       .insert({
         archive_id: archiveData.id,
@@ -288,7 +288,7 @@ ${textContent}
       throw new Error(`타임라인 DB 저장 실패: ${timelineError.message}`);
     }
 
-    const { error: logError } = await supabase
+    const { error: logError } = await getSupabaseClient()
       .from("notification_logs")
       .insert({
         archive_id: archiveData.id,
@@ -299,7 +299,7 @@ ${textContent}
       throw new Error(`알림 로그 DB 저장 실패: ${logError.message}`);
     }
 
-    const { data: fullArchive, error: fetchError } = await supabase
+    const { data: fullArchive, error: fetchError } = await getSupabaseClient()
       .from("archives")
       .select(`
         *,
@@ -483,7 +483,7 @@ ${textContent}
 
     const parsedData = JSON.parse(resultText);
 
-    const { data: timelineData, error: timelineError } = await supabase
+    const { data: timelineData, error: timelineError } = await getSupabaseClient()
       .from("timelines")
       .insert({
         archive_id: originalArchive.id,
@@ -501,7 +501,7 @@ ${textContent}
       throw new Error(`타임라인 DB 저장 실패: ${timelineError?.message || "알 수 없는 오류"}`);
     }
 
-    const { error: archiveUpdateError } = await supabase
+    const { error: archiveUpdateError } = await getSupabaseClient()
       .from("archives")
       .update({
         reality_index: parsedData.realityIndex,
@@ -513,7 +513,7 @@ ${textContent}
       throw new Error(`아카이브 상태 갱신 실패: ${archiveUpdateError.message}`);
     }
 
-    const { error: logError } = await supabase
+    const { error: logError } = await getSupabaseClient()
       .from("notification_logs")
       .insert({
         archive_id: originalArchive.id,
@@ -552,7 +552,7 @@ export async function updateVote(
   currentVotes: Record<RealityStatus, number>,
   userId: string
 ): Promise<Record<RealityStatus, number>> {
-  const { data: existingVote, error: selectError } = await supabase
+  const { data: existingVote, error: selectError } = await getSupabaseClient()
     .from("votes")
     .select("status")
     .eq("archive_id", archiveId)
@@ -566,7 +566,7 @@ export async function updateVote(
   const updatedVotes = { ...currentVotes };
 
   if (!existingVote) {
-    const { error: insertError } = await supabase
+    const { error: insertError } = await getSupabaseClient()
       .from("votes")
       .insert({
         archive_id: archiveId,
@@ -585,7 +585,7 @@ export async function updateVote(
       return currentVotes;
     }
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await getSupabaseClient()
       .from("votes")
       .update({ status: status })
       .eq("archive_id", archiveId)
@@ -599,7 +599,7 @@ export async function updateVote(
     updatedVotes[status] = (updatedVotes[status] || 0) + 1;
   }
 
-  const { error: archiveUpdateError } = await supabase
+  const { error: archiveUpdateError } = await getSupabaseClient()
     .from("archives")
     .update({
       user_votes: updatedVotes,
@@ -617,7 +617,7 @@ export async function fetchUserVote(
   archiveId: string,
   userId: string
 ): Promise<RealityStatus | null> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseClient()
     .from("votes")
     .select("status")
     .eq("archive_id", archiveId)
@@ -631,7 +631,7 @@ export async function fetchUserVote(
 }
 
 export async function purgeAllArchives(): Promise<void> {
-  const { error } = await supabase
+  const { error } = await getSupabaseClient()
     .from("archives")
     .delete()
     .neq("id", "00000000-0000-0000-0000-000000000000");
