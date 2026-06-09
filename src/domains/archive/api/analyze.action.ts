@@ -150,7 +150,7 @@ export async function analyzeNewsUrl(
     const $ = cheerio.load(html);
 
     $("script, style, nav, footer, header, aside, form").remove();
-    
+
     let textContent = $("p, h1, h2, h3")
       .map((_, el) => $(el).text())
       .get()
@@ -169,7 +169,7 @@ export async function analyzeNewsUrl(
     } catch {
     }
 
-    const prompt = `
+    const prompt = ` 
 아래 뉴스 기사 본문을 읽고 분석하여 객관적인 사실을 요약하고, 관련 화자 정보 및 카테고리를 분류하십시오.
 B2B SaaS 관점에서 신뢰할 수 있는 정보를 추출하는 것이 목적입니다.
 
