@@ -171,7 +171,7 @@ export async function analyzeNewsUrl(
 
     const prompt = ` 
 아래 뉴스 기사 본문을 읽고 분석하여 객관적인 사실을 요약하고, 관련 화자 정보 및 카테고리를 분류하십시오.
-B2B SaaS 관점에서 신뢰할 수 있는 정보를 추출하는 것이 목적입니다.
+뉴스의 객관성을 검증하고 신뢰할 수 있는 정보를 추출하는 것이 목적입니다.
 
 기사 제목: ${title}
 기사 본문:
@@ -185,8 +185,8 @@ ${textContent}
 5. speakerName: 기사 본문 속 발언을 주도했거나 핵심이 되는 인물의 이름. 특정 인물이 언급되지 않았다면 "기사 제보" 혹은 "보도진" 등으로 작성할 것.
 6. speakerPosition: 해당 인물의 직책. 예: 대표, 부사장, 팀장, 대변인 등. 없으면 "기자" 또는 "분석관".
 7. speakerOrganization: 해당 인물이 소속된 회사 또는 기관명. 예: 삼성전자, 네이버, 기획재정부 등. 없으면 기사의 언론사 이름(예: ${sourceVenue})을 작성할 것.
-8. realityIndex: 이 기사의 실현 가능성 혹은 사실 신뢰성 지수(0~100 사이의 정수). 신호 분석을 위한 초기값입니다.
-9. status: 기사 내용을 종합하여 현재 신호의 상태를 "REALIZING" (실현 중), "FADING" (흐려지는 중), "DEBATING" (논쟁 중), "DEFUNCT" (소멸함), "REALIZED" (실현 완료) 중 하나로 판별할 것.
+8. realityIndex: 이 기사의 실현 가능성 혹은 사실 신뢰성 지수(0~100 사이의 정수). 뉴스 분석을 위한 초기값입니다.
+9. status: 기사 내용을 종합하여 현재 뉴스의 상태를 "REALIZING" (실현 중), "FADING" (흐려지는 중), "DEBATING" (논쟁 중), "DEFUNCT" (소멸함), "REALIZED" (실현 완료) 중 하나로 판별할 것.
 `;
 
     const completion = await openai.chat.completions.create({
@@ -428,8 +428,8 @@ export async function analyzeTimelineUpdate(
     }
 
     const prompt = `
-당신은 B2B SaaS의 시그널 분석가입니다.
-최초 발언(Root Claim)과 비교하여, 새로 수집된 기사가 해당 발언/약속의 현실화 과정에서 어떤 변화를 나타내는지 분석하십시오.
+당신은 뉴스 팩트체크 및 신뢰성 분석가입니다.
+최초 보도 및 발언 대비, 새로 수집된 기사가 해당 내용의 현실화 과정에서 어떤 변화를 나타내는지 분석하십시오.
 
 최초 발언: ${originalArchive.coreClaim.quote}
 최초 맥락: ${originalArchive.coreClaim.contextDescription}
@@ -440,8 +440,8 @@ ${textContent}
 
 규칙:
 1. 언어: 반드시 한국어로 작성할 것.
-2. title: 새로운 기사가 나타내는 타임라인 사건의 제목 (예: "AR 글래스 시제품 공개와 투자 지속").
-3. summary: 새로운 기사 내용을 요약하고, 최초 발언 대비 어떠한 변화(진전, 후퇴, 정체, 논쟁 등)가 있었는지 B2B 관점에서 분석 (3~4문장).
+2. title: 새로운 기사가 나타내는 타임라인 사건의 제목.
+3. summary: 새로운 기사 내용을 요약하고, 최초 보도 및 발언 대비 어떠한 변화(진전, 후퇴, 정체, 논쟁 등)가 있었는지 분석 (3~4문장).
 4. realityIndex: 이 시점 기준 최초 발언이 실현될 가능성을 0~100 사이 숫자로 재평가.
 5. status: "REALIZING", "FADING", "DEBATING", "DEFUNCT", "REALIZED" 중 이 사건으로 인해 변화된 최종 상태 선택.
 `;

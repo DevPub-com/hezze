@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { User } from "@supabase/supabase-js";
 import { getSupabaseClient } from "@/lib/supabase";
 import { REALITY_STATUS_LABEL, RealityStatus, ArchiveReference, CheckInterval, NotificationLog } from "@/domains/archive/model/archive.model";
@@ -11,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { FileText, AlertCircle, Link as LinkIcon, Users, Loader2, Search, Plus, Trash2, Bell, Clock, ArrowLeft } from "lucide-react";
-import { analyzeNewsUrl, analyzeTimelineUpdate, fetchArchivesList, updateVote, purgeAllArchives, fetchUserVote } from "@/domains/archive/api/analyze.action";
+import { analyzeNewsUrl, analyzeTimelineUpdate, fetchArchivesList, updateVote, fetchUserVote } from "@/domains/archive/api/analyze.action";
 
 export const dynamic = "force-dynamic";
 
@@ -310,7 +311,7 @@ export default function ArchiveDashboard() {
           <div className="flex items-center gap-[8px]">
             <Clock className="w-[20px] h-[20px] sm:w-[24px] sm:h-[24px] text-brand-600 animate-pulse shrink-0" />
             <h1 className="text-[16px] sm:text-[20px] font-bold tracking-tight text-foreground whitespace-nowrap">
-              헷제 기업 구매 신호 아카이버
+              헷제
             </h1>
           </div>
           <div className="flex items-center gap-[8px] sm:gap-[12px] flex-wrap justify-start sm:justify-end w-full sm:w-auto">
@@ -351,7 +352,7 @@ export default function ArchiveDashboard() {
               className="rounded-[6px] text-[13px] bg-brand-600 hover:bg-brand-700"
             >
               <Plus className="w-[16px] h-[16px] mr-[4px]" />
-              신규 시그널 추적
+              새 뉴스 분석
             </Button>
           </div>
         </div>
@@ -364,7 +365,7 @@ export default function ArchiveDashboard() {
               <Search className="absolute left-[12px] top-[10px] w-[16px] h-[16px] text-muted-foreground" />
               <Input
                 type="text"
-                placeholder="인물, 소속, 발언 검색..."
+                placeholder="인물, 소속, 뉴스 검색..."
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 className="pl-[36px] h-[36px] rounded-[6px] text-[13px]"
@@ -423,7 +424,7 @@ export default function ArchiveDashboard() {
 
             {filteredArchiveList.length === 0 && (
               <div className="py-[40px] text-center text-muted-foreground text-[13px]">
-                검색 조건에 맞는 시그널이 없습니다.
+                검색 조건에 맞는 뉴스가 없습니다.
               </div>
             )}
           </div>
@@ -451,7 +452,7 @@ export default function ArchiveDashboard() {
             <div className="max-w-[700px] mx-auto my-[20px] sm:my-[40px] px-[16px] sm:px-[24px]">
               <Card className="border-border/60 shadow-md rounded-[12px]">
                 <CardHeader className="border-b-[1px] border-border/50 pb-[16px]">
-                  <CardTitle className="text-[18px] font-bold">새로운 뉴스 시그널 등록 및 스케줄 설정</CardTitle>
+                  <CardTitle className="text-[18px] font-bold">새로운 뉴스 등록 및 분석 설정</CardTitle>
                 </CardHeader>
                 <CardContent className="pt-[24px] space-y-[20px]">
                   <form onSubmit={handleCreateArchive} className="space-y-[20px]">
@@ -597,10 +598,13 @@ export default function ArchiveDashboard() {
                         <div className="flex items-center gap-[12px]">
                           {selectedArchive.speaker.imageUrl ? (
                             <div className="relative w-[48px] h-[48px] rounded-full overflow-hidden border-[1px] border-border shrink-0">
-                              <img
+                              <Image
                                 src={selectedArchive.speaker.imageUrl}
                                 alt={selectedArchive.speaker.name}
-                                className="object-cover w-full h-full"
+                                className="object-cover"
+                                fill
+                                sizes="48px"
+                                unoptimized
                               />
                             </div>
                           ) : (
@@ -872,11 +876,11 @@ export default function ArchiveDashboard() {
 
                   <Card className="border-border/50 shadow-sm rounded-[12px] bg-gradient-to-br from-brand-50 to-brand-100/30 border-brand-100">
                     <CardHeader className="pb-[12px] border-b-[1px] border-brand-100/50">
-                      <CardTitle className="text-[14px] font-bold text-brand-900">B2B 신호 컨설팅 리포트</CardTitle>
+                      <CardTitle className="text-[14px] font-bold text-brand-900">뉴스 분석 보고서</CardTitle>
                     </CardHeader>
                     <CardContent className="pt-[16px] space-y-[12px]">
                       <p className="text-[11px] text-brand-900/70 leading-relaxed">
-                        이 구매 신호의 핵심 정보, 타임라인 전개 상황, 그리고 집단지성 신뢰 지표를 정돈된 A4 양식의 PDF 컨설팅 리포트로 발행합니다.
+                        이 뉴스의 핵심 정보, 타임라인 전개 상황, 그리고 집단지성 신뢰 지표를 정돈된 A4 양식의 PDF 뉴스 분석 보고서로 발행합니다.
                       </p>
                       <Button
                         onClick={() => setReportModalOpen(true)}
@@ -974,9 +978,9 @@ export default function ArchiveDashboard() {
           ) : (
             <div className="flex flex-col items-center justify-center h-[calc(100vh-80px)] text-center px-[24px]">
               <Clock className="w-[48px] h-[48px] text-muted-foreground/50 mb-[16px] animate-spin-slow" />
-              <h3 className="text-[16px] font-semibold text-foreground mb-[4px]">선택된 시그널 없음</h3>
+              <h3 className="text-[16px] font-semibold text-foreground mb-[4px]">선택된 뉴스 없음</h3>
               <p className="text-[13px] text-muted-foreground max-w-[320px] leading-relaxed">
-                좌측 목록에서 시그널을 선택하거나, 우측 상단의 신규 시그널 추적 버튼을 눌러 새로운 감시 일정을 등록하십시오.
+                좌측 목록에서 뉴스를 선택하거나, 우측 상단의 새 뉴스 분석 버튼을 눌러 새로운 감시 일정을 등록하십시오.
               </p>
             </div>
           )}
@@ -1087,8 +1091,8 @@ export default function ArchiveDashboard() {
               <div className="border-[1px] sm:border-[2px] border-slate-900 p-[16px] sm:p-[24px] space-y-[24px]">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b-[2px] border-slate-900 pb-[16px] gap-[12px]">
                   <div>
-                    <span className="text-[10px] sm:text-[11px] font-mono text-slate-500 uppercase tracking-wider block">HEZZE SIGNAL ADVISORY REPORT</span>
-                    <h1 className="text-[18px] sm:text-[22px] font-extrabold text-slate-900 tracking-tight mt-[4px]">기업 신호 분석 컨설팅 보고서</h1>
+                    <span className="text-[10px] sm:text-[11px] font-mono text-slate-500 uppercase tracking-wider block">HEZZE NEWS ANALYSIS REPORT</span>
+                    <h1 className="text-[18px] sm:text-[22px] font-extrabold text-slate-900 tracking-tight mt-[4px]">뉴스 분석 보고서</h1>
                   </div>
                   <div className="text-left sm:text-right shrink-0">
                     <span className="text-[9px] sm:text-[10px] font-mono text-slate-500 block">보고서 번호: {selectedArchive.referenceNumber}</span>
@@ -1098,7 +1102,7 @@ export default function ArchiveDashboard() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-[12px] sm:gap-[16px] text-[12px] border-b-[1px] border-slate-200 pb-[16px]">
                   <div>
-                    <span className="font-bold text-slate-500 block">신호 분류</span>
+                    <span className="font-bold text-slate-500 block">뉴스 분류</span>
                     <span className="font-semibold text-slate-900 mt-[2px] block">{selectedArchive.category === "ENTRY.QUOTE" ? "핵심 발언" : "공약 약속"}</span>
                   </div>
                   <div>
@@ -1183,7 +1187,7 @@ export default function ArchiveDashboard() {
                 </div>
 
                 <div className="text-center pt-[24px] border-t-[2px] border-slate-900 text-slate-500 text-[10px] font-mono">
-                  HEZZE INTELLIGENCE SIGNAL ANALYSIS ENGINE • AUTOMATICALLY GENERATED DOCUMENT
+                  HEZZE NEWS ANALYSIS ENGINE • AUTOMATICALLY GENERATED DOCUMENT
                 </div>
               </div>
             </div>
