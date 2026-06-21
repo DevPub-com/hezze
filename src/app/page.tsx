@@ -644,9 +644,20 @@ export default function ArchiveDashboard() {
                       </div>
                     </CardHeader>
                     <CardContent className="pt-[16px]">
-                      <p className="text-[13px] text-muted-foreground leading-relaxed">
-                        {selectedArchive.coreClaim.contextDescription}
-                      </p>
+                      {selectedArchive.evidence.sourceUrl ? (
+                        <a
+                          href={selectedArchive.evidence.sourceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block text-[13px] text-muted-foreground leading-relaxed hover:text-brand-600 transition-colors cursor-pointer"
+                        >
+                          {selectedArchive.coreClaim.contextDescription}
+                        </a>
+                      ) : (
+                        <p className="text-[13px] text-muted-foreground leading-relaxed">
+                          {selectedArchive.coreClaim.contextDescription}
+                        </p>
+                      )}
                     </CardContent>
                   </Card>
 

@@ -2,8 +2,13 @@
 
 import * as cheerio from "cheerio";
 import OpenAI from "openai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { getSupabaseClient } from "@/lib/supabase";
 import { ArchiveReference, CategoryType, RealityStatus, CheckInterval, TimelineItem, NotificationLog } from "../model/archive.model";
+
+if (process.env.NODE_ENV === "development") {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+}
 
 interface DBTimeline {
   id: string;
@@ -96,7 +101,7 @@ export async function fetchArchivesList(): Promise<ArchiveReference[]> {
       evidence: {
         recordedAt: archive.created_at,
         sourceVenue: archive.speaker_organization,
-        sourceUrl: "",
+        sourceUrl: timelineItems[0]?.sourceUrl || "",
       },
       realityMeter: {
         currentIndex: archive.reality_index,
@@ -122,6 +127,138 @@ export async function fetchArchivesList(): Promise<ArchiveReference[]> {
   });
 }
 
+interface CaptionTrack {
+  baseUrl: string;
+  languageCode: string;
+}
+
+interface PlayerResponse {
+  captions?: {
+    playerCaptionsTracklistRenderer?: {
+      captionTracks?: CaptionTrack[];
+    };
+  };
+  videoDetails?: {
+    title?: string;
+    shortDescription?: string;
+    author?: string;
+  };
+}
+
+async function fetchYoutubeTranscript(youtubeVideoId: string): Promise<{ title: string; textContent: string }> {
+  const response = await fetch(`https://www.youtube.com/watch?v=${youtubeVideoId}&bpctr=9999999999&has_verified=1`, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("유튜브 페이지를 가져올 수 없습니다.");
+  }
+
+  const html = await response.text();
+  const $ = cheerio.load(html);
+
+  let title = $("title").text().replace(" - YouTube", "") || "";
+  let playerResponse: PlayerResponse | null = null;
+  let jsonString = "";
+
+  $("script").each((_, element) => {
+    const text = $(element).html() || "";
+    if (text.includes("ytInitialPlayerResponse")) {
+      const startIndex = text.indexOf("ytInitialPlayerResponse");
+      if (startIndex !== -1) {
+        const jsonStart = text.indexOf("{", startIndex);
+        if (jsonStart !== -1) {
+          let braceCount = 0;
+          let jsonEnd = -1;
+          for (let index = jsonStart; index < text.length; index++) {
+            if (text[index] === "{") {
+              braceCount++;
+            } else if (text[index] === "}") {
+              braceCount--;
+              if (braceCount === 0) {
+                jsonEnd = index;
+                break;
+              }
+            }
+          }
+          if (jsonEnd !== -1) {
+            jsonString = text.substring(jsonStart, jsonEnd + 1);
+          }
+        }
+      }
+    }
+  });
+
+  if (!jsonString) {
+    const match = html.match(/ytInitialPlayerResponse\s*=\s*({.+?});/);
+    if (match) {
+      jsonString = match[1];
+    }
+  }
+
+  if (jsonString) {
+    try {
+      playerResponse = JSON.parse(jsonString) as PlayerResponse;
+    } catch {
+    }
+  }
+
+  if (playerResponse && playerResponse.videoDetails?.title && !title) {
+    title = playerResponse.videoDetails.title;
+  }
+
+  const captionTracks = playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+  if (!captionTracks || captionTracks.length === 0) {
+    const description = playerResponse?.videoDetails?.shortDescription || "";
+    const author = playerResponse?.videoDetails?.author || "";
+    const fallbackText = `${title}\n${author}\n${description}`.trim();
+    if (!fallbackText) {
+      throw new Error("자막 정보가 존재하지 않는 동영상입니다.");
+    }
+    return { title, textContent: fallbackText };
+  }
+
+  const selectedTrack =
+    captionTracks.find((track) => track.languageCode.startsWith("ko")) ||
+    captionTracks.find((track) => track.languageCode.startsWith("en")) ||
+    captionTracks[0];
+
+  const transcriptResponse = await fetch(selectedTrack.baseUrl);
+  if (!transcriptResponse.ok) {
+    const description = playerResponse?.videoDetails?.shortDescription || "";
+    const author = playerResponse?.videoDetails?.author || "";
+    const fallbackText = `${title}\n${author}\n${description}`.trim();
+    if (!fallbackText) {
+      throw new Error("자막 데이터를 불러올 수 없습니다.");
+    }
+    return { title, textContent: fallbackText };
+  }
+
+  const xml = await transcriptResponse.text();
+  const xmlCheerio = cheerio.load(xml, { xmlMode: true });
+  const textContent = xmlCheerio("text")
+    .map((_, el) => xmlCheerio(el).text())
+    .get()
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!textContent) {
+    const description = playerResponse?.videoDetails?.shortDescription || "";
+    const author = playerResponse?.videoDetails?.author || "";
+    const fallbackText = `${title}\n${author}\n${description}`.trim();
+    if (!fallbackText) {
+      throw new Error("자막 텍스트가 비어 있습니다.");
+    }
+    return { title, textContent: fallbackText };
+  }
+
+  return { title, textContent };
+}
+
 export async function analyzeNewsUrl(
   url: string,
   checkInterval: CheckInterval = CheckInterval.WEEKLY,
@@ -136,37 +273,53 @@ export async function analyzeNewsUrl(
   const openai = new OpenAI({ apiKey });
 
   try {
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`URL 가져오기 실패: ${response.statusText}`);
-    }
-
-    const html = await response.text();
-    const $ = cheerio.load(html);
-
-    $("script, style, nav, footer, header, aside, form").remove();
-
-    let textContent = $("p, h1, h2, h3")
-      .map((_, el) => $(el).text())
-      .get()
-      .join("\n")
-      .replace(/\s+/g, " ")
-      .substring(0, 12000);
-
-    if (textContent.trim().length < 50) {
-      textContent = $("body").text().replace(/\s+/g, " ").substring(0, 12000);
-    }
-
-    const title = $("title").text() || "제목 없음";
+    const isYoutube = url.includes("youtube.com") || url.includes("youtu.be");
+    let textContent = "";
+    let title = "";
     let sourceVenue = "알 수 없음";
-    try {
-      sourceVenue = new URL(url).hostname.replace("www.", "");
-    } catch {
+
+    if (isYoutube) {
+      const videoIdMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/ ]{11})/i);
+      const youtubeVideoId = videoIdMatch ? videoIdMatch[1] : null;
+      if (!youtubeVideoId) {
+        throw new Error("유효한 유튜브 동영상 식별자를 찾을 수 없습니다.");
+      }
+      const transcriptData = await fetchYoutubeTranscript(youtubeVideoId);
+      title = transcriptData.title;
+      textContent = transcriptData.textContent;
+      sourceVenue = "YouTube";
+    } else {
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`URL 가져오기 실패: ${response.statusText}`);
+      }
+
+      const html = await response.text();
+      const $ = cheerio.load(html);
+
+      $("script, style, nav, footer, header, aside, form").remove();
+
+      textContent = $("p, h1, h2, h3")
+        .map((_, el) => $(el).text())
+        .get()
+        .join("\n")
+        .replace(/\s+/g, " ")
+        .substring(0, 12000);
+
+      if (textContent.trim().length < 50) {
+        textContent = $("body").text().replace(/\s+/g, " ").substring(0, 12000);
+      }
+
+      title = $("title").text() || "제목 없음";
+      try {
+        sourceVenue = new URL(url).hostname.replace("www.", "");
+      } catch {
+      }
     }
 
     const prompt = ` 
@@ -185,38 +338,64 @@ ${textContent}
 5. speakerName: 기사 본문 속 발언을 주도했거나 핵심이 되는 인물의 이름. 특정 인물이 언급되지 않았다면 "기사 제보" 혹은 "보도진" 등으로 작성할 것.
 6. speakerPosition: 해당 인물의 직책. 예: 대표, 부사장, 팀장, 대변인 등. 없으면 "기자" 또는 "분석관".
 7. speakerOrganization: 해당 인물이 소속된 회사 또는 기관명. 예: 삼성전자, 네이버, 기획재정부 등. 없으면 기사의 언론사 이름(예: ${sourceVenue})을 작성할 것.
-8. realityIndex: 이 기사의 실현 가능성 혹은 사실 신뢰성 지수(0~100 사이의 정수). 뉴스 분석을 위한 초기값입니다.
-9. status: 기사 내용을 종합하여 현재 뉴스의 상태를 "REALIZING" (실현 중), "FADING" (흐려지는 중), "DEBATING" (논쟁 중), "DEFUNCT" (소멸함), "REALIZED" (실현 완료) 중 하나로 판별할 것.
+8. scoreSourceReliability: 출처 및 인물 신뢰도 지수 (0~30 사이의 정수). 아래 산식을 엄격히 적용할 것:
+   - 30점: 정부 부처의 공식 발표, 공인 대기업의 공식 보도자료, 실명 대변인 공식 발표
+   - 20점: 일반 언론사 기자 보도, 익명의 업계 관계자 발언
+   - 10점: 블로그, 커뮤니티, 출처 불분명한 인물의 주장
+9. scoreFeasibility: 구체성 및 실현 가능성 지수 (0~40 사이의 정수). 아래 산식을 엄격히 적용할 것:
+   - 40점: 구체적인 실행 예산 계획, 기한, 달성 목표 수치가 모두 본문에 명시됨
+   - 25점: 명확한 실행 방향성은 명시되어 있으나 구체적 수치나 세부 예산안이 누락됨
+   - 10점: 실현 계획이나 구체적 방법이 없는 선언적 희망 사항에 불과함
+10. scoreEvidence: 객관적 근거 신뢰도 지수 (0~30 사이의 정수). 아래 산식을 엄격히 적용할 것:
+    - 30점: 공인 통계 자료, 학술적 연구 결과, 상호 합의된 공식 계약서 등 명확한 증거가 본문에 포함됨
+    - 15점: 정황상의 간접 증거만 제시됨
+    - 0점: 증거 제시 없이 단순 주장 혹은 감정적 호소만 존재함
+11. status: 기사 내용을 종합하여 현재 뉴스의 상태를 "REALIZING" (실현 중), "FADING" (흐려지는 중), "DEBATING" (논쟁 중), "DEFUNCT" (소멸함), "REALIZED" (실현 완료) 중 하나로 판별할 것.
 `;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: "You are an AI that summarizes news articles objectively. You must output strictly valid JSON conforming to the schema.",
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "article_summary",
-          strict: true,
-          schema: {
-            type: "object",
+    let parsedData: {
+      title: string;
+      summary: string;
+      newsCategory: string;
+      speakerName: string;
+      speakerPosition: string;
+      speakerOrganization: string;
+      scoreSourceReliability: number;
+      scoreFeasibility: number;
+      scoreEvidence: number;
+      status: string;
+    };
+
+    if (isYoutube) {
+      const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+      if (!geminiApiKey) {
+        throw new Error("GEMINI_API_KEY가 설정되지 않았습니다.");
+      }
+      const googleGenAIClient = new GoogleGenAI({ apiKey: geminiApiKey });
+      const geminiResponse = await googleGenAIClient.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
             properties: {
-              title: { type: "string" },
-              summary: { type: "string" },
-              newsCategory: { type: "string", enum: ["금융/경제", "IT/기술", "산업/기업", "정책/규제", "사회/여론", "기타"] },
-              speakerName: { type: "string" },
-              speakerPosition: { type: "string" },
-              speakerOrganization: { type: "string" },
-              realityIndex: { type: "integer" },
-              status: { type: "string", enum: ["REALIZING", "FADING", "DEBATING", "DEFUNCT", "REALIZED"] }
+              title: { type: Type.STRING },
+              summary: { type: Type.STRING },
+              newsCategory: {
+                type: Type.STRING,
+                enum: ["금융/경제", "IT/기술", "산업/기업", "정책/규제", "사회/여론", "기타"],
+              },
+              speakerName: { type: Type.STRING },
+              speakerPosition: { type: Type.STRING },
+              speakerOrganization: { type: Type.STRING },
+              scoreSourceReliability: { type: Type.INTEGER },
+              scoreFeasibility: { type: Type.INTEGER },
+              scoreEvidence: { type: Type.INTEGER },
+              status: {
+                type: Type.STRING,
+                enum: ["REALIZING", "FADING", "DEBATING", "DEFUNCT", "REALIZED"],
+              },
             },
             required: [
               "title",
@@ -225,19 +404,75 @@ ${textContent}
               "speakerName",
               "speakerPosition",
               "speakerOrganization",
-              "realityIndex",
-              "status"
+              "scoreSourceReliability",
+              "scoreFeasibility",
+              "scoreEvidence",
+              "status",
             ],
-            additionalProperties: false
+          },
+        },
+      });
+
+      const responseText = geminiResponse.text;
+      if (!responseText) {
+        throw new Error("Gemini AI로부터 응답을 받지 못했습니다.");
+      }
+      parsedData = JSON.parse(responseText);
+    } else {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: "You are an AI that summarizes news articles objectively. You must output strictly valid JSON conforming to the schema.",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "article_summary",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                summary: { type: "string" },
+                newsCategory: { type: "string", enum: ["금융/경제", "IT/기술", "산업/기업", "정책/규제", "사회/여론", "기타"] },
+                speakerName: { type: "string" },
+                speakerPosition: { type: "string" },
+                speakerOrganization: { type: "string" },
+                scoreSourceReliability: { type: "integer" },
+                scoreFeasibility: { type: "integer" },
+                scoreEvidence: { type: "integer" },
+                status: { type: "string", enum: ["REALIZING", "FADING", "DEBATING", "DEFUNCT", "REALIZED"] }
+              },
+              required: [
+                "title",
+                "summary",
+                "newsCategory",
+                "speakerName",
+                "speakerPosition",
+                "speakerOrganization",
+                "scoreSourceReliability",
+                "scoreFeasibility",
+                "scoreEvidence",
+                "status"
+              ],
+              additionalProperties: false
+            }
           }
         }
-      }
-    });
+      });
 
-    const resultText = completion.choices[0].message.content;
-    if (!resultText) throw new Error("AI로부터 응답을 받지 못했습니다.");
-
-    const parsedData = JSON.parse(resultText);
+      const resultText = completion.choices[0].message.content;
+      if (!resultText) throw new Error("AI로부터 응답을 받지 못했습니다.");
+      parsedData = JSON.parse(resultText);
+    }
+    const realityIndex = parsedData.scoreSourceReliability + parsedData.scoreFeasibility + parsedData.scoreEvidence;
     const referenceNumber = "SIG-" + Math.floor(Math.random() * 10000);
     const defaultExpiryDate = expiryDate || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
@@ -252,7 +487,7 @@ ${textContent}
         speaker_name: parsedData.speakerName,
         speaker_position: parsedData.speakerPosition,
         speaker_organization: parsedData.speakerOrganization,
-        reality_index: parsedData.realityIndex,
+        reality_index: realityIndex,
         status: parsedData.status,
         check_interval: checkInterval,
         expiry_date: defaultExpiryDate,
@@ -280,7 +515,7 @@ ${textContent}
         source_url: url,
         title: parsedData.title,
         summary: parsedData.summary,
-        reality_index: parsedData.realityIndex,
+        reality_index: realityIndex,
         status: parsedData.status,
       });
 
@@ -292,7 +527,7 @@ ${textContent}
       .from("notification_logs")
       .insert({
         archive_id: archiveData.id,
-        message: `기사 분석 완료: 카테고리 [${parsedData.newsCategory}], 최초 현실화 지수 [${parsedData.realityIndex}%]`,
+        message: `기사 분석 완료: 카테고리 [${parsedData.newsCategory}], 최초 현실화 지수 [${realityIndex}%]`,
       });
 
     if (logError) {
@@ -394,37 +629,53 @@ export async function analyzeTimelineUpdate(
   const openai = new OpenAI({ apiKey });
 
   try {
-    const response = await fetch(newArticleUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`URL 가져오기 실패: ${response.statusText}`);
-    }
-
-    const html = await response.text();
-    const $ = cheerio.load(html);
-
-    $("script, style, nav, footer, header, aside, form").remove();
-
-    let textContent = $("p, h1, h2, h3")
-      .map((_, el) => $(el).text())
-      .get()
-      .join("\n")
-      .replace(/\s+/g, " ")
-      .substring(0, 12000);
-
-    if (textContent.trim().length < 50) {
-      textContent = $("body").text().replace(/\s+/g, " ").substring(0, 12000);
-    }
-
-    const title = $("title").text() || "제목 없음";
+    const isYoutube = newArticleUrl.includes("youtube.com") || newArticleUrl.includes("youtu.be");
+    let textContent = "";
+    let title = "";
     let sourceVenue = "알 수 없음";
-    try {
-      sourceVenue = new URL(newArticleUrl).hostname.replace("www.", "");
-    } catch {
+
+    if (isYoutube) {
+      const videoIdMatch = newArticleUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/ ]{11})/i);
+      const youtubeVideoId = videoIdMatch ? videoIdMatch[1] : null;
+      if (!youtubeVideoId) {
+        throw new Error("유효한 유튜브 동영상 식별자를 찾을 수 없습니다.");
+      }
+      const transcriptData = await fetchYoutubeTranscript(youtubeVideoId);
+      title = transcriptData.title;
+      textContent = transcriptData.textContent;
+      sourceVenue = "YouTube";
+    } else {
+      const response = await fetch(newArticleUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`URL 가져오기 실패: ${response.statusText}`);
+      }
+
+      const html = await response.text();
+      const $ = cheerio.load(html);
+
+      $("script, style, nav, footer, header, aside, form").remove();
+
+      textContent = $("p, h1, h2, h3")
+        .map((_, el) => $(el).text())
+        .get()
+        .join("\n")
+        .replace(/\s+/g, " ")
+        .substring(0, 12000);
+
+      if (textContent.trim().length < 50) {
+        textContent = $("body").text().replace(/\s+/g, " ").substring(0, 12000);
+      }
+
+      title = $("title").text() || "제목 없음";
+      try {
+        sourceVenue = new URL(newArticleUrl).hostname.replace("www.", "");
+      } catch {
+      }
     }
 
     const prompt = `
@@ -442,46 +693,104 @@ ${textContent}
 1. 언어: 반드시 한국어로 작성할 것.
 2. title: 새로운 기사가 나타내는 타임라인 사건의 제목.
 3. summary: 새로운 기사 내용을 요약하고, 최초 보도 및 발언 대비 어떠한 변화(진전, 후퇴, 정체, 논쟁 등)가 있었는지 분석 (3~4문장).
-4. realityIndex: 이 시점 기준 최초 발언이 실현될 가능성을 0~100 사이 숫자로 재평가.
-5. status: "REALIZING", "FADING", "DEBATING", "DEFUNCT", "REALIZED" 중 이 사건으로 인해 변화된 최종 상태 선택.
+4. scoreSourceReliability: 이 시점 기준 출처 및 인물 신뢰도 지수 재평가 (0~30 사이의 정수). 아래 산식을 엄격히 적용할 것:
+   - 30점: 정부 부처의 공식 발표, 공인 대기업의 공식 보도자료, 실명 대변인 공식 발표
+   - 20점: 일반 언론사 기자 보도, 익명의 업계 관계자 발언
+   - 10점: 블로그, 커뮤니티, 출처 불분명한 인물의 주장
+5. scoreFeasibility: 이 시점 기준 구체성 및 실현 가능성 지수 재평가 (0~40 사이의 정수). 아래 산식을 엄격히 적용할 것:
+   - 40점: 구체적인 실행 예산 계획, 기한, 달성 목표 수치가 모두 본문에 명시됨
+   - 25점: 명확한 실행 방향성은 명시되어 있으나 구체적 수치나 세부 예산안이 누락됨
+   - 10점: 실현 계획이나 구체적 방법이 없는 선언적 희망 사항에 불과함
+6. scoreEvidence: 이 시점 기준 객관적 근거 신뢰도 지수 재평가 (0~30 사이의 정수). 아래 산식을 엄격히 적용할 것:
+   - 30점: 공인 통계 자료, 학술적 연구 결과, 상호 합의된 공식 계약서 등 명확한 증거가 본문에 포함됨
+   - 15점: 정황상의 간접 증거만 제시됨
+   - 0점: 증거 제시 없이 단순 주장 혹은 감정적 호소만 존재함
+7. status: "REALIZING", "FADING", "DEBATING", "DEFUNCT", "REALIZED" 중 이 사건으로 인해 변화된 최종 상태 선택.
 `;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: "You are an AI that analyzes timelines. You must output strictly valid JSON conforming to the schema.",
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "timeline_update",
-          strict: true,
-          schema: {
-            type: "object",
+    let parsedData: {
+      title: string;
+      summary: string;
+      scoreSourceReliability: number;
+      scoreFeasibility: number;
+      scoreEvidence: number;
+      status: string;
+    };
+
+    if (isYoutube) {
+      const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+      if (!geminiApiKey) {
+        throw new Error("GEMINI_API_KEY가 설정되지 않았습니다.");
+      }
+      const googleGenAIClient = new GoogleGenAI({ apiKey: geminiApiKey });
+      const geminiResponse = await googleGenAIClient.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
             properties: {
-              title: { type: "string" },
-              summary: { type: "string" },
-              realityIndex: { type: "integer" },
-              status: { type: "string", enum: ["REALIZING", "FADING", "DEBATING", "DEFUNCT", "REALIZED"] }
+              title: { type: Type.STRING },
+              summary: { type: Type.STRING },
+              scoreSourceReliability: { type: Type.INTEGER },
+              scoreFeasibility: { type: Type.INTEGER },
+              scoreEvidence: { type: Type.INTEGER },
+              status: {
+                type: Type.STRING,
+                enum: ["REALIZING", "FADING", "DEBATING", "DEFUNCT", "REALIZED"],
+              },
             },
-            required: ["title", "summary", "realityIndex", "status"],
-            additionalProperties: false
+            required: ["title", "summary", "scoreSourceReliability", "scoreFeasibility", "scoreEvidence", "status"],
+          },
+        },
+      });
+
+      const responseText = geminiResponse.text;
+      if (!responseText) {
+        throw new Error("Gemini AI로부터 응답을 받지 못했습니다.");
+      }
+      parsedData = JSON.parse(responseText);
+    } else {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: "You are an AI that analyzes timelines. You must output strictly valid JSON conforming to the schema.",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "timeline_update",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                summary: { type: "string" },
+                scoreSourceReliability: { type: "integer" },
+                scoreFeasibility: { type: "integer" },
+                scoreEvidence: { type: "integer" },
+                status: { type: "string", enum: ["REALIZING", "FADING", "DEBATING", "DEFUNCT", "REALIZED"] }
+              },
+              required: ["title", "summary", "scoreSourceReliability", "scoreFeasibility", "scoreEvidence", "status"],
+              additionalProperties: false
+            }
           }
         }
-      }
-    });
+      });
 
-    const resultText = completion.choices[0].message.content;
-    if (!resultText) throw new Error("AI로부터 응답을 받지 못했습니다.");
-
-    const parsedData = JSON.parse(resultText);
+      const resultText = completion.choices[0].message.content;
+      if (!resultText) throw new Error("AI로부터 응답을 받지 못했습니다.");
+      parsedData = JSON.parse(resultText);
+    }
+    const realityIndex = parsedData.scoreSourceReliability + parsedData.scoreFeasibility + parsedData.scoreEvidence;
 
     const { data: timelineData, error: timelineError } = await getSupabaseClient()
       .from("timelines")
@@ -491,7 +800,7 @@ ${textContent}
         source_url: newArticleUrl,
         title: parsedData.title,
         summary: parsedData.summary,
-        reality_index: parsedData.realityIndex,
+        reality_index: realityIndex,
         status: parsedData.status,
       })
       .select()
@@ -504,7 +813,7 @@ ${textContent}
     const { error: archiveUpdateError } = await getSupabaseClient()
       .from("archives")
       .update({
-        reality_index: parsedData.realityIndex,
+        reality_index: realityIndex,
         status: parsedData.status,
       })
       .eq("id", originalArchive.id);
@@ -517,7 +826,7 @@ ${textContent}
       .from("notification_logs")
       .insert({
         archive_id: originalArchive.id,
-        message: `관련 기사 분석을 기반으로 타임라인이 갱신되었습니다. 지수: ${parsedData.realityIndex}%, 상태: ${parsedData.status}`,
+        message: `관련 기사 분석을 기반으로 타임라인이 갱신되었습니다. 지수: ${realityIndex}%, 상태: ${parsedData.status}`,
       });
 
     if (logError) {
@@ -537,7 +846,7 @@ ${textContent}
 
     return {
       timelineItem,
-      updatedRealityIndex: parsedData.realityIndex,
+      updatedRealityIndex: realityIndex,
       updatedStatus: parsedData.status as RealityStatus,
     };
   } catch (error: unknown) {
