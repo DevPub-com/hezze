@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { FileText, AlertCircle, Link as LinkIcon, Users, Loader2, Search, Plus, Trash2, Bell, Clock, ArrowLeft } from "lucide-react";
-import { analyzeNewsUrl, analyzeTimelineUpdate, fetchArchivesList, updateVote, fetchUserVote } from "@/domains/archive/api/analyze.action";
+import { analyzeNewsUrl, analyzeTimelineUpdate, fetchArchivesList, updateVote, fetchUserVote, runPeriodicCheckForArchive } from "@/domains/archive/api/analyze.action";
 
 export const dynamic = "force-dynamic";
 
@@ -239,24 +239,24 @@ export default function ArchiveDashboard() {
     }
   };
 
-  const handleSimulatePeriodicCheck = () => {
+  const handleSimulatePeriodicCheck = async () => {
     if (!selectedArchiveId) return;
-    const updatedList = archiveList.map((archive) => {
-      if (archive.id === selectedArchiveId) {
-        const labelText = archive.checkInterval === CheckInterval.DAILY ? "매일" : archive.checkInterval === CheckInterval.WEEKLY ? "매주" : "매월";
-        const newNotificationLog: NotificationLog = {
-          id: "log-" + Date.now(),
-          recordedAt: new Date().toISOString(),
-          message: `${labelText} 정기 AI 분석 스케줄이 수동으로 촉발되었습니다. 추가 변동 사항이 없습니다.`,
-        };
-        return {
-          ...archive,
-          notificationLogs: [newNotificationLog, ...archive.notificationLogs],
-        };
-      }
-      return archive;
-    });
-    setArchiveList(updatedList);
+    try {
+      setIsLoading(true);
+      setErrorMessage(null);
+      const updatedArchive = await runPeriodicCheckForArchive(selectedArchiveId);
+      const updatedList = archiveList.map((archive) => {
+        if (archive.id === selectedArchiveId) {
+          return updatedArchive;
+        }
+        return archive;
+      });
+      setArchiveList(updatedList);
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : "정기 분석에 실패했습니다.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleAddTargetDate = () => {
@@ -876,10 +876,20 @@ export default function ArchiveDashboard() {
                           size="sm"
                           variant="outline"
                           onClick={handleSimulatePeriodicCheck}
+                          disabled={isLoading}
                           className="w-full h-[32px] rounded-[6px] text-[11px]"
                         >
-                          <Clock className="w-[12px] h-[12px] mr-[4px]" />
-                          정기 분석 강제 기동 (시뮬레이션)
+                          {isLoading ? (
+                            <>
+                              <Loader2 className="w-[12px] h-[12px] mr-[4px] animate-spin" />
+                              분석 실행 중...
+                            </>
+                          ) : (
+                            <>
+                              <Clock className="w-[12px] h-[12px] mr-[4px]" />
+                              정기 분석 강제 기동 (시뮬레이션)
+                            </>
+                          )}
                         </Button>
                       </div>
                     </CardContent>

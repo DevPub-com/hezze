@@ -949,3 +949,231 @@ export async function purgeAllArchives(): Promise<void> {
     throw new Error(`DB 초기화 실패: ${error.message}`);
   }
 }
+
+export async function runPeriodicCheckForArchive(
+  archiveId: string
+): Promise<ArchiveReference> {
+  const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!geminiApiKey) {
+    throw new Error("GEMINI_API_KEY가 설정되지 않았습니다.");
+  }
+
+  const { data: archiveData, error: archiveError } = await getSupabaseClient()
+    .from("archives")
+    .select(`
+      *,
+      timelines (*),
+      notification_logs (*)
+    `)
+    .eq("id", archiveId)
+    .single();
+
+  if (archiveError || !archiveData) {
+    throw new Error(`아카이브 조회 실패: ${archiveError?.message || "알 수 없는 오류"}`);
+  }
+
+  const dbArchive = archiveData as DBArchive;
+  const quote = dbArchive.core_claim_quote;
+  const speaker = dbArchive.speaker_name;
+  const currentRealityIndex = dbArchive.reality_index;
+  const currentStatus = dbArchive.status;
+
+  const googleGenAIClient = new GoogleGenAI({ apiKey: geminiApiKey });
+  const prompt = `주장: "${quote}" (화자: ${speaker})
+현재 현실화 지수: ${currentRealityIndex}%, 현재 상태: ${currentStatus}
+현재 시간: ${new Date().toISOString()}
+
+위 주장의 진행 상황이나 현실화 여부에 대한 최근 뉴스 및 정보를 구글 검색을 통해 확인하십시오.
+검색 결과 새로운 의미 있는 진전, 논쟁, 후퇴 등의 사실 변화나 기사가 발견되었다면, 이를 바탕으로 상태와 지수를 재평가하여 JSON 형태로 반환하십시오.
+최근 새로운 정보가 없거나 변동 사항이 없다면 hasUpdate를 false로 반환하십시오.
+
+반드시 한국어로 작성하십시오.
+
+점수 산식 규칙:
+1. 출처 신뢰도 지수 (0~30): 정부/대기업 공식 발표 30, 언론사 보도 20, 커뮤니티/블로그 10
+2. 구체성 및 실현 가능성 지수 (0~40): 계획/수치/예산 명시 40, 방향성만 명시 25, 선언적 희망 사항 10
+3. 객관적 근거 신뢰도 지수 (0~30): 공식 통계/계약서 30, 정황 증거 15, 단순 주장 0
+상태(status): "REALIZING", "FADING", "DEBATING", "DEFUNCT", "REALIZED" 중 선택.`;
+
+  const geminiResponse = await googleGenAIClient.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: prompt,
+    config: {
+      tools: [{ googleSearch: {} }],
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          hasUpdate: { type: Type.BOOLEAN },
+          title: { type: Type.STRING },
+          summary: { type: Type.STRING },
+          sourceUrl: { type: Type.STRING },
+          sourceVenue: { type: Type.STRING },
+          scoreSourceReliability: { type: Type.INTEGER },
+          scoreFeasibility: { type: Type.INTEGER },
+          scoreEvidence: { type: Type.INTEGER },
+          status: {
+            type: Type.STRING,
+            enum: ["REALIZING", "FADING", "DEBATING", "DEFUNCT", "REALIZED"],
+          },
+        },
+        required: ["hasUpdate"],
+      },
+    },
+  });
+
+  const responseText = geminiResponse.text;
+  if (!responseText) {
+    throw new Error("Gemini AI로부터 응답을 받지 못했습니다.");
+  }
+
+  interface PeriodicCheckResponse {
+    hasUpdate: boolean;
+    title?: string;
+    summary?: string;
+    sourceUrl?: string;
+    sourceVenue?: string;
+    scoreSourceReliability?: number;
+    scoreFeasibility?: number;
+    scoreEvidence?: number;
+    status?: string;
+  }
+
+  const parsedData = JSON.parse(responseText) as PeriodicCheckResponse;
+
+  if (parsedData.hasUpdate && parsedData.title && parsedData.summary && parsedData.status) {
+    const scoreSourceReliability = parsedData.scoreSourceReliability ?? 0;
+    const scoreFeasibility = parsedData.scoreFeasibility ?? 0;
+    const scoreEvidence = parsedData.scoreEvidence ?? 0;
+    const updatedRealityIndex = scoreSourceReliability + scoreFeasibility + scoreEvidence;
+    const updatedStatus = parsedData.status;
+
+    const { error: timelineError } = await getSupabaseClient()
+      .from("timelines")
+      .insert({
+        archive_id: archiveId,
+        source_venue: parsedData.sourceVenue || "Google Search",
+        source_url: parsedData.sourceUrl || "",
+        title: parsedData.title,
+        summary: parsedData.summary,
+        reality_index: updatedRealityIndex,
+        status: updatedStatus,
+      });
+
+    if (timelineError) {
+      throw new Error(`타임라인 DB 저장 실패: ${timelineError.message}`);
+    }
+
+    const { error: archiveUpdateError } = await getSupabaseClient()
+      .from("archives")
+      .update({
+        reality_index: updatedRealityIndex,
+        status: updatedStatus,
+      })
+      .eq("id", archiveId);
+
+    if (archiveUpdateError) {
+      throw new Error(`아카이브 상태 갱신 실패: ${archiveUpdateError.message}`);
+    }
+
+    const { error: logError } = await getSupabaseClient()
+      .from("notification_logs")
+      .insert({
+        archive_id: archiveId,
+        message: `정기 AI 분석 실행: 관련 새로운 뉴스 기사 발견 및 분석 완료. 지수: ${updatedRealityIndex}%, 상태: ${updatedStatus}`,
+      });
+
+    if (logError) {
+      throw new Error(`알림 로그 DB 저장 실패: ${logError.message}`);
+    }
+  } else {
+    const { error: logError } = await getSupabaseClient()
+      .from("notification_logs")
+      .insert({
+        archive_id: archiveId,
+        message: "정기 AI 분석 결과 추가 변동 사항이 없습니다.",
+      });
+
+    if (logError) {
+      throw new Error(`알림 로그 DB 저장 실패: ${logError.message}`);
+    }
+  }
+
+  const { data: updatedFullArchive, error: fetchError } = await getSupabaseClient()
+    .from("archives")
+    .select(`
+      *,
+      timelines (*),
+      notification_logs (*)
+    `)
+    .eq("id", archiveId)
+    .single();
+
+  if (fetchError || !updatedFullArchive) {
+    throw new Error(`DB 조회 실패: ${fetchError?.message || "알 수 없는 오류"}`);
+  }
+
+  const updatedDbArchive = updatedFullArchive as DBArchive;
+  const dbTimelines = updatedDbArchive.timelines || [];
+  const dbLogs = updatedDbArchive.notification_logs || [];
+
+  const timelineItems: TimelineItem[] = dbTimelines.map((timeline) => ({
+    id: timeline.id,
+    recordedAt: timeline.recorded_at,
+    sourceVenue: timeline.source_venue,
+    sourceUrl: timeline.source_url,
+    title: timeline.title,
+    summary: timeline.summary,
+    realityIndex: timeline.reality_index,
+    status: timeline.status as RealityStatus,
+  }));
+
+  const notificationLogsList: NotificationLog[] = dbLogs.map((log) => ({
+    id: log.id,
+    recordedAt: log.recorded_at,
+    message: log.message,
+  }));
+
+  return {
+    id: updatedDbArchive.id,
+    referenceNumber: updatedDbArchive.reference_number,
+    category: updatedDbArchive.category as CategoryType,
+    newsCategory: updatedDbArchive.news_category,
+    coreClaim: {
+      quote: updatedDbArchive.core_claim_quote,
+      contextDescription: updatedDbArchive.core_claim_context,
+    },
+    speaker: {
+      id: "speaker-" + updatedDbArchive.id,
+      name: updatedDbArchive.speaker_name,
+      position: updatedDbArchive.speaker_position,
+      organization: updatedDbArchive.speaker_organization,
+      imageUrl: "",
+    },
+    evidence: {
+      recordedAt: updatedDbArchive.created_at,
+      sourceVenue: updatedDbArchive.speaker_organization,
+      sourceUrl: timelineItems[0]?.sourceUrl || "",
+    },
+    realityMeter: {
+      currentIndex: updatedDbArchive.reality_index,
+      status: updatedDbArchive.status as RealityStatus,
+    },
+    observationStats: {
+      totalObservers: 1,
+      distribution: {
+        [RealityStatus.REALIZING]: updatedDbArchive.status === "REALIZING" ? 1 : 0,
+        [RealityStatus.FADING]: updatedDbArchive.status === "FADING" ? 1 : 0,
+        [RealityStatus.DEBATING]: updatedDbArchive.status === "DEBATING" ? 1 : 0,
+        [RealityStatus.DEFUNCT]: updatedDbArchive.status === "DEFUNCT" ? 1 : 0,
+        [RealityStatus.REALIZED]: updatedDbArchive.status === "REALIZED" ? 1 : 0,
+      },
+    },
+    checkInterval: updatedDbArchive.check_interval as CheckInterval,
+    expiryDate: updatedDbArchive.expiry_date,
+    targetDates: updatedDbArchive.target_dates || [],
+    timeline: timelineItems,
+    notificationLogs: notificationLogsList,
+    userVotes: updatedDbArchive.user_votes as Record<RealityStatus, number>,
+  };
+}
