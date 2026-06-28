@@ -10,6 +10,14 @@ if (process.env.NODE_ENV === "development") {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 }
 
+function cleanJsonText(rawText: string): string {
+  return rawText
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+
 interface DBTimeline {
   id: string;
   recorded_at: string;
@@ -65,21 +73,21 @@ export async function fetchArchivesList(): Promise<ArchiveReference[]> {
   const dbArchives = (data || []) as DBArchive[];
 
   return dbArchives.map((archive) => {
-    const timelineItems: TimelineItem[] = (archive.timelines || []).map((t) => ({
-      id: t.id,
-      recordedAt: t.recorded_at,
-      sourceVenue: t.source_venue,
-      sourceUrl: t.source_url,
-      title: t.title,
-      summary: t.summary,
-      realityIndex: t.reality_index,
-      status: t.status as RealityStatus,
+    const timelineItems: TimelineItem[] = (archive.timelines || []).map((timelineItem) => ({
+      id: timelineItem.id,
+      recordedAt: timelineItem.recorded_at,
+      sourceVenue: timelineItem.source_venue,
+      sourceUrl: timelineItem.source_url,
+      title: timelineItem.title,
+      summary: timelineItem.summary,
+      realityIndex: timelineItem.reality_index,
+      status: timelineItem.status as RealityStatus,
     }));
 
-    const notificationLogsList: NotificationLog[] = (archive.notification_logs || []).map((l) => ({
-      id: l.id,
-      recordedAt: l.recorded_at,
-      message: l.message,
+    const notificationLogsList: NotificationLog[] = (archive.notification_logs || []).map((notificationLogItem) => ({
+      id: notificationLogItem.id,
+      recordedAt: notificationLogItem.recorded_at,
+      message: notificationLogItem.message,
     }));
 
     return {
@@ -240,7 +248,7 @@ async function fetchYoutubeTranscript(youtubeVideoId: string): Promise<{ title: 
   const xml = await transcriptResponse.text();
   const xmlCheerio = cheerio.load(xml, { xmlMode: true });
   const textContent = xmlCheerio("text")
-    .map((_, el) => xmlCheerio(el).text())
+    .map((_, element) => xmlCheerio(element).text())
     .get()
     .join(" ")
     .replace(/\s+/g, " ")
@@ -305,7 +313,7 @@ export async function analyzeNewsUrl(
       $("script, style, nav, footer, header, aside, form").remove();
 
       textContent = $("p, h1, h2, h3")
-        .map((_, el) => $(el).text())
+        .map((_, element) => $(element).text())
         .get()
         .join("\n")
         .replace(/\s+/g, " ")
@@ -417,7 +425,7 @@ ${textContent}
       if (!responseText) {
         throw new Error("Gemini AI로부터 응답을 받지 못했습니다.");
       }
-      parsedData = JSON.parse(responseText);
+      parsedData = JSON.parse(cleanJsonText(responseText));
     } else {
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
@@ -470,7 +478,7 @@ ${textContent}
 
       const resultText = completion.choices[0].message.content;
       if (!resultText) throw new Error("AI로부터 응답을 받지 못했습니다.");
-      parsedData = JSON.parse(resultText);
+      parsedData = JSON.parse(cleanJsonText(resultText));
     }
     const realityIndex = parsedData.scoreSourceReliability + parsedData.scoreFeasibility + parsedData.scoreEvidence;
     const referenceNumber = "SIG-" + Math.floor(Math.random() * 10000);
@@ -552,21 +560,21 @@ ${textContent}
     const dbTimelines = dbArchive.timelines || [];
     const dbLogs = dbArchive.notification_logs || [];
 
-    const timelineItems: TimelineItem[] = dbTimelines.map((t) => ({
-      id: t.id,
-      recordedAt: t.recorded_at,
-      sourceVenue: t.source_venue,
-      sourceUrl: t.source_url,
-      title: t.title,
-      summary: t.summary,
-      realityIndex: t.reality_index,
-      status: t.status as RealityStatus,
+    const timelineItems: TimelineItem[] = dbTimelines.map((timelineItem) => ({
+      id: timelineItem.id,
+      recordedAt: timelineItem.recorded_at,
+      sourceVenue: timelineItem.source_venue,
+      sourceUrl: timelineItem.source_url,
+      title: timelineItem.title,
+      summary: timelineItem.summary,
+      realityIndex: timelineItem.reality_index,
+      status: timelineItem.status as RealityStatus,
     }));
 
-    const notificationLogsList: NotificationLog[] = dbLogs.map((l) => ({
-      id: l.id,
-      recordedAt: l.recorded_at,
-      message: l.message,
+    const notificationLogsList: NotificationLog[] = dbLogs.map((notificationLogItem) => ({
+      id: notificationLogItem.id,
+      recordedAt: notificationLogItem.recorded_at,
+      message: notificationLogItem.message,
     }));
 
     return {
@@ -661,7 +669,7 @@ export async function analyzeTimelineUpdate(
       $("script, style, nav, footer, header, aside, form").remove();
 
       textContent = $("p, h1, h2, h3")
-        .map((_, el) => $(el).text())
+        .map((_, element) => $(element).text())
         .get()
         .join("\n")
         .replace(/\s+/g, " ")
@@ -750,7 +758,7 @@ ${textContent}
       if (!responseText) {
         throw new Error("Gemini AI로부터 응답을 받지 못했습니다.");
       }
-      parsedData = JSON.parse(responseText);
+      parsedData = JSON.parse(cleanJsonText(responseText));
     } else {
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
@@ -788,7 +796,7 @@ ${textContent}
 
       const resultText = completion.choices[0].message.content;
       if (!resultText) throw new Error("AI로부터 응답을 받지 못했습니다.");
-      parsedData = JSON.parse(resultText);
+      parsedData = JSON.parse(cleanJsonText(resultText));
     }
     const realityIndex = parsedData.scoreSourceReliability + parsedData.scoreFeasibility + parsedData.scoreEvidence;
 
@@ -1039,7 +1047,7 @@ export async function runPeriodicCheckForArchive(
     status?: string;
   }
 
-  const parsedData = JSON.parse(responseText) as PeriodicCheckResponse;
+  const parsedData = JSON.parse(cleanJsonText(responseText)) as PeriodicCheckResponse;
 
   if (parsedData.hasUpdate && parsedData.title && parsedData.summary && parsedData.status) {
     const scoreSourceReliability = parsedData.scoreSourceReliability ?? 0;

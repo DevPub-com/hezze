@@ -11,39 +11,43 @@ export async function GET() {
     const currentDayOfWeek = currentDateObject.getDay();
     const currentDayOfMonth = currentDateObject.getDate();
 
-    const { data: archives, error } = await getSupabaseClient()
+    const { data: archives, error: fetchError } = await getSupabaseClient()
       .from("archives")
       .select("id, check_interval, created_at, target_dates")
       .gte("expiry_date", currentDateString);
 
-    if (error) {
+    if (fetchError) {
       return NextResponse.json(
-        { error: error.message },
+        { error: fetchError.message },
         { status: 500 }
       );
     }
 
     if (archives) {
       for (const archive of archives) {
-        const targetDates: string[] = archive.target_dates || [];
-        if (targetDates.includes(currentDateString)) {
-          await runPeriodicCheckForArchive(archive.id);
-          continue;
-        }
+        try {
+          const targetDates: string[] = archive.target_dates || [];
+          if (targetDates.includes(currentDateString)) {
+            await runPeriodicCheckForArchive(archive.id);
+            continue;
+          }
 
-        const checkInterval = archive.check_interval;
-        if (checkInterval === "DAILY") {
-          await runPeriodicCheckForArchive(archive.id);
-        } else if (checkInterval === "WEEKLY") {
-          const creationDateObject = new Date(archive.created_at);
-          if (currentDayOfWeek === creationDateObject.getDay()) {
+          const checkInterval = archive.check_interval;
+          if (checkInterval === "DAILY") {
             await runPeriodicCheckForArchive(archive.id);
+          } else if (checkInterval === "WEEKLY") {
+            const creationDateObject = new Date(archive.created_at);
+            if (currentDayOfWeek === creationDateObject.getDay()) {
+              await runPeriodicCheckForArchive(archive.id);
+            }
+          } else if (checkInterval === "MONTHLY") {
+            const creationDateObject = new Date(archive.created_at);
+            if (currentDayOfMonth === creationDateObject.getDate()) {
+              await runPeriodicCheckForArchive(archive.id);
+            }
           }
-        } else if (checkInterval === "MONTHLY") {
-          const creationDateObject = new Date(archive.created_at);
-          if (currentDayOfMonth === creationDateObject.getDate()) {
-            await runPeriodicCheckForArchive(archive.id);
-          }
+        } catch (individualError: unknown) {
+          console.error(`아카이브 ID ${archive.id} 주기적 검사 실행 실패:`, individualError);
         }
       }
     }
@@ -56,3 +60,4 @@ export async function GET() {
     );
   }
 }
+
