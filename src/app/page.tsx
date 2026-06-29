@@ -891,9 +891,9 @@ export default function ArchiveDashboard() {
                       </div>
 
                       {(() => {
-                        const totalVotes = Object.values(selectedArchive.userVotes || {}).reduce((sum, count) => sum + count, 0);
+                        const totalVotes = Object.values(selectedArchive.userVotes || {}).reduce((accumulator, voteCount) => accumulator + voteCount, 0);
                         const currentVotes = selectedArchive.userVotes?.[selectedArchive.realityMeter.status] || 0;
-                        const agreement = totalVotes > 0 ? Math.round((currentVotes / totalVotes) * 100) : 100;
+                        const agreement = totalVotes > 0 ? Math.round((currentVotes / totalVotes) * 100) : 0;
                         return (
                           <div className="pt-[10px] border-t-[1px] border-border/40">
                             <div className="flex items-baseline justify-between mb-[6px]">

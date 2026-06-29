@@ -18,7 +18,7 @@ export function ViralShareModal({ isOpen, onClose, archive }: ViralShareModalPro
 
   const totalVotes = Object.values(archive.userVotes).reduce((accumulator, currentVoteCount) => accumulator + currentVoteCount, 0);
   const currentStatusVoteCount = archive.userVotes[archive.realityMeter.status] || 0;
-  const agreementPercentage = totalVotes > 0 ? Math.round((currentStatusVoteCount / totalVotes) * 100) : 100;
+  const agreementPercentage = totalVotes > 0 ? Math.round((currentStatusVoteCount / totalVotes) * 100) : 0;
 
   const handleCopyLink = async () => {
     try {
