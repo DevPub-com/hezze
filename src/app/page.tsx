@@ -4,15 +4,17 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import { User } from "@supabase/supabase-js";
 import { getSupabaseClient } from "@/lib/supabase";
-import { REALITY_STATUS_LABEL, RealityStatus, ArchiveReference, CheckInterval, NotificationLog } from "@/domains/archive/model/archive.model";
+import { REALITY_STATUS_LABEL, RealityStatus, ArchiveReference, CheckInterval, NotificationLog, REALIZATION_TRAJECTORY_LABEL } from "@/domains/archive/model/archive.model";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { FileText, AlertCircle, Link as LinkIcon, Users, Loader2, Search, Plus, Trash2, Bell, Clock, ArrowLeft } from "lucide-react";
+import { FileText, AlertCircle, Link as LinkIcon, Users, Loader2, Search, Plus, Trash2, Bell, Clock, ArrowLeft, Sparkles } from "lucide-react";
 import { analyzeNewsUrl, analyzeTimelineUpdate, fetchArchivesList, updateVote, fetchUserVote, runPeriodicCheckForArchive } from "@/domains/archive/api/analyze.action";
+import { ViralShareModal } from "@/components/archive/ViralShareModal";
+import { LeaderboardSection } from "@/components/archive/LeaderboardSection";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +32,8 @@ export default function ArchiveDashboard() {
   const [isSignUp, setIsSignUp] = useState(false);
 
   const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [viralModalOpen, setViralModalOpen] = useState(false);
+  const [mainViewTab, setMainViewTab] = useState<"tracking" | "leaderboard">("tracking");
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -308,11 +312,35 @@ export default function ArchiveDashboard() {
     <main className="min-h-screen bg-background font-sans">
       <header className="border-b-[1px] border-border bg-card px-[16px] sm:px-[24px] py-[12px] sm:py-[16px]">
         <div className="max-w-[1400px] mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-[12px]">
-          <div className="flex items-center gap-[8px]">
-            <Clock className="w-[20px] h-[20px] sm:w-[24px] sm:h-[24px] text-brand-600 animate-pulse shrink-0" />
-            <h1 className="text-[16px] sm:text-[20px] font-bold tracking-tight text-foreground whitespace-nowrap">
-              헷제
-            </h1>
+          <div className="flex items-center space-x-[16px]">
+            <div className="flex items-center gap-[8px]">
+              <Clock className="w-[20px] h-[20px] sm:w-[24px] sm:h-[24px] text-brand-600 animate-pulse shrink-0" />
+              <h1 className="text-[16px] sm:text-[20px] font-bold tracking-tight text-foreground whitespace-nowrap">
+                헷제
+              </h1>
+            </div>
+            <div className="flex bg-muted/60 p-[3px] rounded-[10px] border-[1px] border-border/40">
+              <button
+                onClick={() => setMainViewTab("tracking")}
+                className={`px-[12px] py-[6px] rounded-[8px] text-[12px] font-bold transition-all ${
+                  mainViewTab === "tracking"
+                    ? "bg-card text-brand-600 shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                📌 실시간 추적
+              </button>
+              <button
+                onClick={() => setMainViewTab("leaderboard")}
+                className={`px-[12px] py-[6px] rounded-[8px] text-[12px] font-bold transition-all ${
+                  mainViewTab === "leaderboard"
+                    ? "bg-card text-brand-600 shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                🏆 팩트 & 예측 랭킹보드
+              </button>
+            </div>
           </div>
           <div className="flex items-center gap-[8px] sm:gap-[12px] flex-wrap justify-start sm:justify-end w-full sm:w-auto">
             {user ? (
@@ -358,8 +386,13 @@ export default function ArchiveDashboard() {
         </div>
       </header>
 
-      <div className="max-w-[1400px] mx-auto flex flex-col lg:flex-row h-[calc(100vh-100px)] lg:h-[calc(100vh-73px)] overflow-hidden">
-        <aside className={cn("w-full lg:w-[380px] shrink-0 border-r-[1px] border-border bg-card flex flex-col h-full", mobileView === "list" ? "flex" : "hidden lg:flex")}>
+      {mainViewTab === "leaderboard" ? (
+        <div className="max-w-[1400px] mx-auto py-[20px]">
+          <LeaderboardSection />
+        </div>
+      ) : (
+        <div className="max-w-[1400px] mx-auto flex flex-col lg:flex-row h-[calc(100vh-100px)] lg:h-[calc(100vh-73px)] overflow-hidden">
+          <aside className={cn("w-full lg:w-[380px] shrink-0 border-r-[1px] border-border bg-card flex flex-col h-full", mobileView === "list" ? "flex" : "hidden lg:flex")}>
           <div className="p-[16px] border-b-[1px] border-border space-y-[12px]">
             <div className="relative">
               <Search className="absolute left-[12px] top-[10px] w-[16px] h-[16px] text-muted-foreground" />
@@ -415,7 +448,7 @@ export default function ArchiveDashboard() {
                       {archive.speaker.name} ({archive.speaker.organization})
                     </span>
                     <span className="font-bold text-brand-600">
-                      리얼리티 {archive.realityMeter.currentIndex}%
+                      팩트 지수 {archive.realityMeter.currentIndex}%
                     </span>
                   </div>
                 </button>
@@ -572,11 +605,19 @@ export default function ArchiveDashboard() {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-[16px] sm:gap-[24px]">
                 <div className="lg:col-span-2 space-y-[16px] sm:space-y-[24px]">
                   <Card className="overflow-hidden border-border/50 shadow-sm hover:shadow-md transition-shadow duration-300 rounded-[12px]">
-                    <CardHeader className="bg-muted/30 border-b-[1px] border-border/50 pb-[12px]">
+                    <CardHeader className="bg-muted/30 border-b-[1px] border-border/50 pb-[12px] flex flex-row items-center justify-between">
                       <div className="flex items-center gap-[8px] text-brand-600">
                         <FileText className="w-[18px] h-[18px]" />
-                        <CardTitle className="text-[15px] font-bold">핵심 주장 및 신호 정보</CardTitle>
+                        <CardTitle className="text-[15px] font-bold">📌 누가 무슨 말을 했냐면요</CardTitle>
                       </div>
+                      <Button
+                        onClick={() => setViralModalOpen(true)}
+                        size="sm"
+                        className="h-[32px] bg-brand-600 hover:bg-brand-700 text-white rounded-[6px] text-[11px] font-bold px-[10px]"
+                      >
+                        <Sparkles className="w-[12px] h-[12px] mr-[4px]" />
+                        ✨ 자랑용 성지순례 카드
+                      </Button>
                     </CardHeader>
                     <CardContent className="pt-[24px]">
                       {selectedArchive.evidence.sourceUrl ? (
@@ -613,8 +654,13 @@ export default function ArchiveDashboard() {
                             </div>
                           )}
                           <div>
-                            <div className="font-semibold text-foreground text-[14px]">
-                              {selectedArchive.speaker.name}
+                            <div className="flex items-center gap-[6px]">
+                              <span className="font-semibold text-foreground text-[14px]">
+                                {selectedArchive.speaker.name}
+                              </span>
+                              <Badge variant="outline" className="text-[10px] py-[1px] px-[6px] rounded-[4px] border-emerald-300 text-emerald-700 bg-emerald-50">
+                                🏛️ 공식 보도 인증
+                              </Badge>
                             </div>
                             <div className="text-[12px] text-muted-foreground">
                               {selectedArchive.speaker.position}, {selectedArchive.speaker.organization}
@@ -640,7 +686,7 @@ export default function ArchiveDashboard() {
                     <CardHeader className="pb-[12px] border-b-[1px] border-border/50">
                       <div className="flex items-center gap-[8px] text-muted-foreground">
                         <AlertCircle className="w-[18px] h-[18px]" />
-                        <CardTitle className="text-[15px] font-bold text-foreground">상세 요약 및 맥락 분석</CardTitle>
+                        <CardTitle className="text-[15px] font-bold text-foreground">💡 한 줄로 딱 정리해 드릴게요</CardTitle>
                       </div>
                     </CardHeader>
                     <CardContent className="pt-[16px]">
@@ -664,13 +710,13 @@ export default function ArchiveDashboard() {
                   <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-300 rounded-[12px]">
                     <CardHeader className="pb-[12px] border-b-[1px] border-border/50">
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-[15px] font-bold">시민 평가단 피드백</CardTitle>
+                        <CardTitle className="text-[15px] font-bold">👥 사람들의 생각은 어떤가요?</CardTitle>
                         <Users className="w-[16px] h-[16px] text-muted-foreground" />
                       </div>
                     </CardHeader>
                     <CardContent className="pt-[16px] space-y-[16px]">
                       <p className="text-[12px] text-muted-foreground">
-                        현재 이 발언의 현실화 진행도에 대해 투표해 주세요. 집단 지성을 통한 관측 신뢰도 평가에 반영됩니다.
+                        이 말이 진짜 이뤄지고 있는 것 같은지 아래 버튼을 눌러 알려주세요!
                       </p>
                       <div className="grid grid-cols-2 sm:grid-cols-5 gap-[8px]">
                         {(Object.keys(REALITY_STATUS_LABEL) as RealityStatus[]).map((status) => {
@@ -702,7 +748,7 @@ export default function ArchiveDashboard() {
                   <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-300 rounded-[12px]">
                     <CardHeader className="pb-[12px] border-b-[1px] border-border/50">
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-[15px] font-bold">현실화 추적 연대기</CardTitle>
+                        <CardTitle className="text-[15px] font-bold">⏱️ 말한 뒤로 어떻게 변했을까요?</CardTitle>
                         <Clock className="w-[16px] h-[16px] text-muted-foreground" />
                       </div>
                     </CardHeader>
@@ -738,8 +784,13 @@ export default function ArchiveDashboard() {
                                 <h4 className="text-[13px] font-bold text-foreground flex items-center gap-[8px] group-hover:text-brand-600 transition-colors">
                                   {event.title}
                                   <Badge className={cn("text-[9px] py-0 px-[4px] rounded-[3px]", getStatusColorClass(event.status))}>
-                                    리얼리티 {event.realityIndex}%
+                                    팩트 지수 {event.realityIndex}%
                                   </Badge>
+                                  {event.trajectory && (
+                                    <Badge variant="outline" className="text-[9px] py-0 px-[4px] rounded-[3px] border-brand-300 text-brand-700 bg-brand-50">
+                                      {REALIZATION_TRAJECTORY_LABEL[event.trajectory]}
+                                    </Badge>
+                                  )}
                                 </h4>
                                 <p className="text-[12px] text-muted-foreground leading-relaxed">
                                   {event.summary}
@@ -764,8 +815,13 @@ export default function ArchiveDashboard() {
                                 <h4 className="text-[13px] font-bold text-foreground flex items-center gap-[8px]">
                                   {event.title}
                                   <Badge className={cn("text-[9px] py-0 px-[4px] rounded-[3px]", getStatusColorClass(event.status))}>
-                                    리얼리티 {event.realityIndex}%
+                                    팩트 지수 {event.realityIndex}%
                                   </Badge>
+                                  {event.trajectory && (
+                                    <Badge variant="outline" className="text-[9px] py-0 px-[4px] rounded-[3px] border-brand-300 text-brand-700 bg-brand-50">
+                                      {REALIZATION_TRAJECTORY_LABEL[event.trajectory]}
+                                    </Badge>
+                                  )}
                                 </h4>
                                 <p className="text-[12px] text-muted-foreground leading-relaxed">
                                   {event.summary}
@@ -779,11 +835,11 @@ export default function ArchiveDashboard() {
                       <div className="pt-[16px] border-t-[1px] border-border/50">
                         <form onSubmit={handleAddTimelineItem} className="space-y-[12px]">
                           <div className="space-y-[4px]">
-                            <label className="text-[12px] font-semibold text-foreground">AI 점검 실행 (관련 뉴스 기사 추가 분석)</label>
+                            <label className="text-[12px] font-semibold text-foreground">🔗 관련된 새 뉴스 기사 링크를 넣어보세요</label>
                             <div className="flex gap-[8px]">
                               <Input
                                 type="url"
-                                placeholder="추적할 관련 뉴스 기사 URL을 입력하십시오..."
+                                placeholder="https://... 뉴스 URL 입력"
                                 value={timelineUrl}
                                 onChange={(event) => setTimelineUrl(event.target.value)}
                                 className="rounded-[6px] h-[36px] flex-1 text-[12px]"
@@ -797,7 +853,7 @@ export default function ArchiveDashboard() {
                                 {isTimelineLoading ? (
                                   <Loader2 className="w-[14px] h-[14px] animate-spin" />
                                 ) : (
-                                  "분석"
+                                  "추적하기"
                                 )}
                               </Button>
                             </div>
@@ -813,30 +869,53 @@ export default function ArchiveDashboard() {
                     <div className={cn("absolute top-0 left-0 w-full h-[4px]", getStatusIndicatorColorClass(selectedArchive.realityMeter.status))} />
                     <CardHeader className="pb-[8px] pt-[16px]">
                       <CardTitle className="text-[15px] font-bold flex justify-between items-center">
-                        현실화 측정기
+                        📊 AI 팩트 측정기
                         <Badge className={cn("rounded-[4px] text-[11px] py-[2px] px-[6px]", getStatusColorClass(selectedArchive.realityMeter.status))}>
                           {REALITY_STATUS_LABEL[selectedArchive.realityMeter.status]}
                         </Badge>
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="pt-[12px]">
-                      <div className="flex items-baseline gap-[4px] mb-[12px]">
-                        <span className="text-[32px] font-bold tracking-tighter text-foreground">
-                          {selectedArchive.realityMeter.currentIndex}%
-                        </span>
-                        <span className="text-[11px] text-muted-foreground font-semibold">현실화 진행도</span>
+                    <CardContent className="pt-[12px] space-y-[16px]">
+                      <div>
+                        <div className="flex items-baseline justify-between mb-[6px]">
+                          <span className="text-[11px] text-muted-foreground font-semibold">🤖 AI 팩트 지수</span>
+                          <span className="text-[20px] font-black tracking-tight text-foreground">
+                            {selectedArchive.realityMeter.currentIndex}%
+                          </span>
+                        </div>
+                        <Progress
+                          value={selectedArchive.realityMeter.currentIndex}
+                          className="h-[8px] rounded-[9999px]"
+                          indicatorColorClass={getStatusIndicatorColorClass(selectedArchive.realityMeter.status)}
+                        />
                       </div>
-                      <Progress
-                        value={selectedArchive.realityMeter.currentIndex}
-                        className="h-[8px] rounded-[9999px]"
-                        indicatorColorClass={getStatusIndicatorColorClass(selectedArchive.realityMeter.status)}
-                      />
+
+                      {(() => {
+                        const totalVotes = Object.values(selectedArchive.userVotes || {}).reduce((sum, count) => sum + count, 0);
+                        const currentVotes = selectedArchive.userVotes?.[selectedArchive.realityMeter.status] || 0;
+                        const agreement = totalVotes > 0 ? Math.round((currentVotes / totalVotes) * 100) : 100;
+                        return (
+                          <div className="pt-[10px] border-t-[1px] border-border/40">
+                            <div className="flex items-baseline justify-between mb-[6px]">
+                              <span className="text-[11px] text-muted-foreground font-semibold">👥 시민 감시단 동의율</span>
+                              <span className="text-[16px] font-bold text-emerald-600">
+                                {agreement}%
+                              </span>
+                            </div>
+                            <Progress
+                              value={agreement}
+                              className="h-[6px] rounded-[9999px]"
+                              indicatorColorClass="bg-emerald-500"
+                            />
+                          </div>
+                        );
+                      })()}
                     </CardContent>
                   </Card>
 
                   <Card className="border-border/50 shadow-sm rounded-[12px]">
                     <CardHeader className="pb-[12px] border-b-[1px] border-border/50">
-                      <CardTitle className="text-[14px] font-bold">감시 스케줄링 설정</CardTitle>
+                      <CardTitle className="text-[14px] font-bold">⚙️ 자동 추적 설정</CardTitle>
                     </CardHeader>
                     <CardContent className="pt-[16px] space-y-[12px]">
                       <div className="flex justify-between items-center text-[12px]">
@@ -887,7 +966,7 @@ export default function ArchiveDashboard() {
                           ) : (
                             <>
                               <Clock className="w-[12px] h-[12px] mr-[4px]" />
-                              정기 분석 강제 기동 (시뮬레이션)
+                              ⚡ 지금 AI한테 최신 소식 물어보기
                             </>
                           )}
                         </Button>
@@ -897,18 +976,18 @@ export default function ArchiveDashboard() {
 
                   <Card className="border-border/50 shadow-sm rounded-[12px] bg-gradient-to-br from-brand-50 to-brand-100/30 border-brand-100">
                     <CardHeader className="pb-[12px] border-b-[1px] border-brand-100/50">
-                      <CardTitle className="text-[14px] font-bold text-brand-900">뉴스 분석 보고서</CardTitle>
+                      <CardTitle className="text-[14px] font-bold text-brand-900">📄 스마트 리포트 뽑아보기</CardTitle>
                     </CardHeader>
                     <CardContent className="pt-[16px] space-y-[12px]">
                       <p className="text-[11px] text-brand-900/70 leading-relaxed">
-                        이 뉴스의 핵심 정보, 타임라인 전개 상황, 그리고 집단지성 신뢰 지표를 정돈된 A4 양식의 PDF 뉴스 분석 보고서로 발행합니다.
+                        이 뉴스의 진행 상황과 사람들의 의견을 한눈에 보는 깔끔한 보고서로 만들었어요.
                       </p>
                       <Button
                         onClick={() => setReportModalOpen(true)}
                         className="w-full h-[36px] bg-brand-600 hover:bg-brand-700 text-white rounded-[6px] text-[12px]"
                       >
                         <FileText className="w-[14px] h-[14px] mr-[4px]" />
-                        AI 분석 보고서 발행
+                        리포트 바로보기
                       </Button>
                     </CardContent>
                   </Card>
@@ -933,7 +1012,21 @@ export default function ArchiveDashboard() {
                                   minute: "2-digit"
                                 })}
                               </span>
-                              <span className="text-foreground/90 font-medium">{log.message}</span>
+                              <span className="text-foreground/90 font-medium">
+                                {(() => {
+                                  const rawMessage = log.message;
+                                  if (rawMessage.includes("기사 분석 완료:")) {
+                                    return rawMessage.replace(/기사 분석 완료: 카테고리 \[(.*?)\], 최초 현실화 지수 \[(.*?)\%\]/, "🔍 첫 분석 완료! [$1] 소식이며, AI 팩트 지수 $2%로 추적을 시작해요.");
+                                  }
+                                  if (rawMessage.includes("정기 AI 분석 실행: 관련 새로운 뉴스 기사 발견")) {
+                                    return "🤖 AI 탐정이 새로운 관련 뉴스를 찾아서 분석했어요!";
+                                  }
+                                  if (rawMessage.includes("정기 AI 분석 결과 추가 변동 사항이 없습니다")) {
+                                    return "😴 AI 탐정이 최신 소식을 검색해봤는데, 아직 새로 바뀐 내용은 없어요.";
+                                  }
+                                  return rawMessage;
+                                })()}
+                              </span>
                             </div>
                           ))
                         ) : (
@@ -1007,6 +1100,7 @@ export default function ArchiveDashboard() {
           )}
         </section>
       </div>
+      )}
 
       {authModalOpen && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-[16px]">
@@ -1215,6 +1309,12 @@ export default function ArchiveDashboard() {
           </div>
         </div>
       )}
+
+      <ViralShareModal
+        isOpen={viralModalOpen}
+        onClose={() => setViralModalOpen(false)}
+        archive={selectedArchive || null}
+      />
     </main>
   );
 }

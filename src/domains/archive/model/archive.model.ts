@@ -6,6 +6,12 @@ export enum RealityStatus {
   REALIZED = 'REALIZED',
 }
 
+export enum RealizationTrajectory {
+  FORWARD = 'FORWARD',
+  DETOUR = 'DETOUR',
+  REVERSED = 'REVERSED',
+}
+
 export enum CategoryType {
   ENTRY_QUOTE = 'ENTRY.QUOTE',
   ENTRY_PROMISE = 'ENTRY.PROMISE',
@@ -32,6 +38,7 @@ export interface TimelineItem {
   summary: string;
   realityIndex: number;
   status: RealityStatus;
+  trajectory?: RealizationTrajectory;
 }
 
 export interface NotificationLog {
@@ -68,6 +75,7 @@ export interface ArchiveReference {
   realityMeter: {
     currentIndex: number;
     status: RealityStatus;
+    trajectory?: RealizationTrajectory;
   };
 
   observationStats: {
@@ -84,10 +92,36 @@ export interface ArchiveReference {
 }
 
 export const REALITY_STATUS_LABEL: Record<RealityStatus, string> = {
-  [RealityStatus.REALIZING]: '현실화 중',
-  [RealityStatus.FADING]: '흐릿해짐',
-  [RealityStatus.DEBATING]: '논쟁 중',
-  [RealityStatus.DEFUNCT]: '완전 소멸',
-  [RealityStatus.REALIZED]: '완전 현실화',
+  [RealityStatus.REALIZING]: '🚀 착착 진행 중',
+  [RealityStatus.FADING]: '🌫️ 소문만 무성해요',
+  [RealityStatus.DEBATING]: '🔥 갑론을박 핫해요',
+  [RealityStatus.DEFUNCT]: '🪦 없었던 일로…',
+  [RealityStatus.REALIZED]: '🎉 진짜 해냈어요!',
 };
+
+export const REALIZATION_TRAJECTORY_LABEL: Record<RealizationTrajectory, string> = {
+  [RealizationTrajectory.FORWARD]: '🎯 계획대로 척척',
+  [RealizationTrajectory.DETOUR]: '🔀 삼천포로 새는 중',
+  [RealizationTrajectory.REVERSED]: '↩️ 오히려 반대로!',
+};
+
+export interface SpeakerRankItem {
+  speakerName: string;
+  organization: string;
+  position: string;
+  totalClaims: number;
+  realizedClaims: number;
+  realizingClaims: number;
+  factBattingAverage: number;
+}
+
+export interface UserRankItem {
+  userId: string;
+  userEmailMasked: string;
+  totalVotes: number;
+  correctVotes: number;
+  accuracyRate: number;
+  badgeTitle: string;
+}
+
 

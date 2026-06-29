@@ -4,7 +4,7 @@ import * as cheerio from "cheerio";
 import OpenAI from "openai";
 import { GoogleGenAI, Type } from "@google/genai";
 import { getSupabaseClient } from "@/lib/supabase";
-import { ArchiveReference, CategoryType, RealityStatus, CheckInterval, TimelineItem, NotificationLog } from "../model/archive.model";
+import { ArchiveReference, CategoryType, RealityStatus, CheckInterval, TimelineItem, NotificationLog, RealizationTrajectory, SpeakerRankItem, UserRankItem } from "../model/archive.model";
 
 if (process.env.NODE_ENV === "development") {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
@@ -535,7 +535,7 @@ ${textContent}
       .from("notification_logs")
       .insert({
         archive_id: archiveData.id,
-        message: `기사 분석 완료: 카테고리 [${parsedData.newsCategory}], 최초 현실화 지수 [${realityIndex}%]`,
+        message: `🔍 첫 분석 완료! [${parsedData.newsCategory}] 소식이며, AI 팩트 지수 ${realityIndex}%로 추적을 시작해요.`,
       });
 
     if (logError) {
@@ -701,19 +701,11 @@ ${textContent}
 1. 언어: 반드시 한국어로 작성할 것.
 2. title: 새로운 기사가 나타내는 타임라인 사건의 제목.
 3. summary: 새로운 기사 내용을 요약하고, 최초 보도 및 발언 대비 어떠한 변화(진전, 후퇴, 정체, 논쟁 등)가 있었는지 분석 (3~4문장).
-4. scoreSourceReliability: 이 시점 기준 출처 및 인물 신뢰도 지수 재평가 (0~30 사이의 정수). 아래 산식을 엄격히 적용할 것:
-   - 30점: 정부 부처의 공식 발표, 공인 대기업의 공식 보도자료, 실명 대변인 공식 발표
-   - 20점: 일반 언론사 기자 보도, 익명의 업계 관계자 발언
-   - 10점: 블로그, 커뮤니티, 출처 불분명한 인물의 주장
-5. scoreFeasibility: 이 시점 기준 구체성 및 실현 가능성 지수 재평가 (0~40 사이의 정수). 아래 산식을 엄격히 적용할 것:
-   - 40점: 구체적인 실행 예산 계획, 기한, 달성 목표 수치가 모두 본문에 명시됨
-   - 25점: 명확한 실행 방향성은 명시되어 있으나 구체적 수치나 세부 예산안이 누락됨
-   - 10점: 실현 계획이나 구체적 방법이 없는 선언적 희망 사항에 불과함
-6. scoreEvidence: 이 시점 기준 객관적 근거 신뢰도 지수 재평가 (0~30 사이의 정수). 아래 산식을 엄격히 적용할 것:
-   - 30점: 공인 통계 자료, 학술적 연구 결과, 상호 합의된 공식 계약서 등 명확한 증거가 본문에 포함됨
-   - 15점: 정황상의 간접 증거만 제시됨
-   - 0점: 증거 제시 없이 단순 주장 혹은 감정적 호소만 존재함
+4. scoreSourceReliability: 이 시점 기준 출처 및 인물 신뢰도 지수 재평가 (0~30 사이의 정수).
+5. scoreFeasibility: 이 시점 기준 구체성 및 실현 가능성 지수 재평가 (0~40 사이의 정수).
+6. scoreEvidence: 이 시점 기준 객관적 근거 신뢰도 지수 재평가 (0~30 사이의 정수).
 7. status: "REALIZING", "FADING", "DEBATING", "DEFUNCT", "REALIZED" 중 이 사건으로 인해 변화된 최종 상태 선택.
+8. trajectory: 전개 방향성 판별. 최초 주장대로 추진 중이면 "FORWARD", 원래 목적과 달리 우회하거나 변질되었으면 "DETOUR", 당초 예상과 완전히 반대 방향으로 전개되었으면 "REVERSED" 중 하나 선택.
 `;
 
     let parsedData: {
@@ -723,6 +715,7 @@ ${textContent}
       scoreFeasibility: number;
       scoreEvidence: number;
       status: string;
+      trajectory?: string;
     };
 
     if (isYoutube) {
@@ -850,6 +843,7 @@ ${textContent}
       summary: timelineData.summary,
       realityIndex: timelineData.reality_index,
       status: timelineData.status as RealityStatus,
+      trajectory: (parsedData.trajectory as RealizationTrajectory) || RealizationTrajectory.FORWARD,
     };
 
     return {
@@ -992,41 +986,37 @@ export async function runPeriodicCheckForArchive(
 현재 시간: ${new Date().toISOString()}
 
 위 주장의 진행 상황이나 현실화 여부에 대한 최근 뉴스 및 정보를 구글 검색을 통해 확인하십시오.
-검색 결과 새로운 의미 있는 진전, 논쟁, 후퇴 등의 사실 변화나 기사가 발견되었다면, 이를 바탕으로 상태와 지수를 재평가하여 JSON 형태로 반환하십시오.
-최근 새로운 정보가 없거나 변동 사항이 없다면 hasUpdate를 false로 반환하십시오.
+검색 결과 새로운 의미 있는 진전, 논쟁, 후퇴 등의 사실 변화나 기사가 발견되었다면, 이를 바탕으로 상태와 지수를 재평가하여 순수 JSON 형태로 반환하십시오.
+최근 새로운 정보가 없거나 변동 사항이 없다면 {"hasUpdate": false}를 반환하십시오.
 
 반드시 한국어로 작성하십시오.
+
+JSON 반환 형식 (업데이트가 있는 경우):
+{
+  "hasUpdate": true,
+  "title": "뉴스 제목",
+  "summary": "핵심 요약",
+  "sourceUrl": "뉴스 URL",
+  "sourceVenue": "언론사",
+  "scoreSourceReliability": 20,
+  "scoreFeasibility": 25,
+  "scoreEvidence": 15,
+  "status": "REALIZING",
+  "trajectory": "FORWARD"
+}
 
 점수 산식 규칙:
 1. 출처 신뢰도 지수 (0~30): 정부/대기업 공식 발표 30, 언론사 보도 20, 커뮤니티/블로그 10
 2. 구체성 및 실현 가능성 지수 (0~40): 계획/수치/예산 명시 40, 방향성만 명시 25, 선언적 희망 사항 10
 3. 객관적 근거 신뢰도 지수 (0~30): 공식 통계/계약서 30, 정황 증거 15, 단순 주장 0
-상태(status): "REALIZING", "FADING", "DEBATING", "DEFUNCT", "REALIZED" 중 선택.`;
+상태(status): "REALIZING", "FADING", "DEBATING", "DEFUNCT", "REALIZED" 중 선택.
+전개방향(trajectory): 정방향 추진 "FORWARD", 변질/우회 "DETOUR", 역행/반대전개 "REVERSED" 중 선택.`;
 
   const geminiResponse = await googleGenAIClient.models.generateContent({
     model: "gemini-2.5-flash",
     contents: prompt,
     config: {
       tools: [{ googleSearch: {} }],
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          hasUpdate: { type: Type.BOOLEAN },
-          title: { type: Type.STRING },
-          summary: { type: Type.STRING },
-          sourceUrl: { type: Type.STRING },
-          sourceVenue: { type: Type.STRING },
-          scoreSourceReliability: { type: Type.INTEGER },
-          scoreFeasibility: { type: Type.INTEGER },
-          scoreEvidence: { type: Type.INTEGER },
-          status: {
-            type: Type.STRING,
-            enum: ["REALIZING", "FADING", "DEBATING", "DEFUNCT", "REALIZED"],
-          },
-        },
-        required: ["hasUpdate"],
-      },
     },
   });
 
@@ -1045,6 +1035,7 @@ export async function runPeriodicCheckForArchive(
     scoreFeasibility?: number;
     scoreEvidence?: number;
     status?: string;
+    trajectory?: string;
   }
 
   const parsedData = JSON.parse(cleanJsonText(responseText)) as PeriodicCheckResponse;
@@ -1088,7 +1079,7 @@ export async function runPeriodicCheckForArchive(
       .from("notification_logs")
       .insert({
         archive_id: archiveId,
-        message: `정기 AI 분석 실행: 관련 새로운 뉴스 기사 발견 및 분석 완료. 지수: ${updatedRealityIndex}%, 상태: ${updatedStatus}`,
+        message: `🤖 AI 탐정이 새로운 관련 뉴스를 찾아서 분석했어요! (팩트 지수: ${updatedRealityIndex}%)`,
       });
 
     if (logError) {
@@ -1099,7 +1090,7 @@ export async function runPeriodicCheckForArchive(
       .from("notification_logs")
       .insert({
         archive_id: archiveId,
-        message: "정기 AI 분석 결과 추가 변동 사항이 없습니다.",
+        message: "😴 AI 탐정이 최신 소식을 검색해봤는데, 아직 새로 바뀐 내용은 없어요.",
       });
 
     if (logError) {
@@ -1184,4 +1175,129 @@ export async function runPeriodicCheckForArchive(
     notificationLogs: notificationLogsList,
     userVotes: updatedDbArchive.user_votes as Record<RealityStatus, number>,
   };
+}
+
+export async function fetchSpeakerLeaderboard(): Promise<SpeakerRankItem[]> {
+  const { data, error } = await getSupabaseClient()
+    .from("archives")
+    .select("speaker_name, speaker_organization, speaker_position, status");
+
+  if (error || !data) {
+    return [];
+  }
+
+  interface SpeakerGroup {
+    speakerName: string;
+    organization: string;
+    position: string;
+    totalClaims: number;
+    realizedClaims: number;
+    realizingClaims: number;
+  }
+
+  const groupedMap = new Map<string, SpeakerGroup>();
+
+  for (const item of data) {
+    const key = `${item.speaker_name}_${item.speaker_organization}`;
+    const existingGroup = groupedMap.get(key) || {
+      speakerName: item.speaker_name,
+      organization: item.speaker_organization,
+      position: item.speaker_position,
+      totalClaims: 0,
+      realizedClaims: 0,
+      realizingClaims: 0,
+    };
+
+    existingGroup.totalClaims += 1;
+    if (item.status === RealityStatus.REALIZED) {
+      existingGroup.realizedClaims += 1;
+    } else if (item.status === RealityStatus.REALIZING) {
+      existingGroup.realizingClaims += 1;
+    }
+
+    groupedMap.set(key, existingGroup);
+  }
+
+  const rankingList: SpeakerRankItem[] = Array.from(groupedMap.values()).map((groupItem) => {
+    const weightedScore = groupItem.realizedClaims * 1.0 + groupItem.realizingClaims * 0.5;
+    const battingAverage = Math.round((weightedScore / groupItem.totalClaims) * 100);
+    return {
+      ...groupItem,
+      factBattingAverage: battingAverage,
+    };
+  });
+
+  return rankingList.sort((firstItem, secondItem) => secondItem.factBattingAverage - firstItem.factBattingAverage);
+}
+
+export async function fetchUserLeaderboard(): Promise<UserRankItem[]> {
+  const { data: votesData, error: votesError } = await getSupabaseClient()
+    .from("votes")
+    .select("user_id, status, archive_id");
+
+  if (votesError || !votesData) {
+    return [];
+  }
+
+  const { data: archivesData, error: archivesError } = await getSupabaseClient()
+    .from("archives")
+    .select("id, status");
+
+  if (archivesError || !archivesData) {
+    return [];
+  }
+
+  const archiveStatusMap = new Map<string, string>();
+  for (const archiveItem of archivesData) {
+    archiveStatusMap.set(archiveItem.id, archiveItem.status);
+  }
+
+  interface UserGroup {
+    userId: string;
+    totalVotes: number;
+    correctVotes: number;
+  }
+
+  const userGroupMap = new Map<string, UserGroup>();
+
+  for (const voteItem of votesData) {
+    const existingUser = userGroupMap.get(voteItem.user_id) || {
+      userId: voteItem.user_id,
+      totalVotes: 0,
+      correctVotes: 0,
+    };
+
+    existingUser.totalVotes += 1;
+    const actualStatus = archiveStatusMap.get(voteItem.archive_id);
+    if (actualStatus && actualStatus === voteItem.status) {
+      existingUser.correctVotes += 1;
+    }
+
+    userGroupMap.set(voteItem.user_id, existingUser);
+  }
+
+  const userRankingList: UserRankItem[] = Array.from(userGroupMap.values()).map((userGroupItem) => {
+    const accuracy = Math.round((userGroupItem.correctVotes / userGroupItem.totalVotes) * 100);
+    let badgeTitle = "🔮 초보 예언가";
+    if (userGroupItem.correctVotes >= 5 && accuracy >= 80) {
+      badgeTitle = "🎯 족집게 탐정";
+    } else if (userGroupItem.correctVotes >= 3) {
+      badgeTitle = "👁️ 성지 관리자";
+    }
+
+    const maskedId = userGroupItem.userId.length > 8 
+      ? `user_${userGroupItem.userId.substring(0, 4)}***` 
+      : "익명 탐정";
+
+    return {
+      userId: userGroupItem.userId,
+      userEmailMasked: maskedId,
+      totalVotes: userGroupItem.totalVotes,
+      correctVotes: userGroupItem.correctVotes,
+      accuracyRate: accuracy,
+      badgeTitle: badgeTitle,
+    };
+  });
+
+  return userRankingList.sort((firstUserItem, secondUserItem) => secondUserItem.accuracyRate - firstUserItem.accuracyRate);
 }
