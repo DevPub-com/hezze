@@ -12,6 +12,24 @@ export enum RealizationTrajectory {
   REVERSED = 'REVERSED',
 }
 
+export enum RelationType {
+  SUPPORTS = 'SUPPORTS',
+  CONTRADICTS = 'CONTRADICTS',
+  DERIVED = 'DERIVED',
+}
+
+export const RELATION_TYPE_LABEL: Record<RelationType, string> = {
+  [RelationType.SUPPORTS]: '같은 방향',
+  [RelationType.CONTRADICTS]: '반대 방향',
+  [RelationType.DERIVED]: '파생 아젠다',
+};
+
+export interface ClaimRelation {
+  id: string;
+  targetArchiveId: string;
+  relationType: RelationType;
+}
+
 export enum CategoryType {
   ENTRY_QUOTE = 'ENTRY.QUOTE',
   ENTRY_PROMISE = 'ENTRY.PROMISE',

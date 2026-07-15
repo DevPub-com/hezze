@@ -2,178 +2,71 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { User } from "@supabase/supabase-js";
-import { getSupabaseClient } from "@/lib/supabase";
-import { REALITY_STATUS_LABEL, RealityStatus, ArchiveReference, CheckInterval, NotificationLog, REALIZATION_TRAJECTORY_LABEL } from "@/domains/archive/model/archive.model";
+import { REALITY_STATUS_LABEL, RealityStatus, CheckInterval, NotificationLog, REALIZATION_TRAJECTORY_LABEL } from "@/domains/archive/model/archive.model";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { FileText, AlertCircle, Link as LinkIcon, Users, Loader2, Search, Plus, Trash2, Bell, Clock, ArrowLeft, Sparkles } from "lucide-react";
-import { analyzeNewsUrl, analyzeTimelineUpdate, fetchArchivesList, updateVote, fetchUserVote, runPeriodicCheckForArchive } from "@/domains/archive/api/analyze.action";
+import { FileText, AlertCircle, Link as LinkIcon, Users, Loader2, Search, Bell, Clock, ArrowLeft, Sparkles, Bookmark, Pin } from "lucide-react";
+import { analyzeTimelineUpdate, updateVote, fetchUserVote, runPeriodicCheckForArchive } from "@/domains/archive/api/analyze.action";
 import { ViralShareModal } from "@/components/archive/ViralShareModal";
-import { LeaderboardSection } from "@/components/archive/LeaderboardSection";
+import { useAppData } from "@/lib/app-context";
 
-export const dynamic = "force-dynamic";
+export function BoardView() {
+  const {
+    archiveList,
+    setArchiveList,
+    user,
+    isLoading,
+    setIsLoading,
+    errorMessage,
+    setErrorMessage,
+    searchQuery,
+    setSearchQuery,
+    mySaved,
+    tracked,
+    toggleSaved,
+    toggleTracked,
+    openAuth,
+  } = useAppData();
 
-export default function ArchiveDashboard() {
-  const [archiveList, setArchiveList] = useState<ArchiveReference[]>([]);
   const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<"list" | "detail">("list");
 
-  const [user, setUser] = useState<User | null>(null);
   const [userVote, setUserVote] = useState<RealityStatus | null>(null);
-
-  const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [isSignUp, setIsSignUp] = useState(false);
 
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [viralModalOpen, setViralModalOpen] = useState(false);
-  const [mainViewTab, setMainViewTab] = useState<"tracking" | "leaderboard">("tracking");
-
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const [inputUrl, setInputUrl] = useState("");
-  const [checkInterval, setCheckInterval] = useState<CheckInterval>(CheckInterval.WEEKLY);
-  const [expiryDate, setExpiryDate] = useState(() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() + 3);
-    return d.toISOString().split("T")[0];
-  });
-  const [targetDates, setTargetDates] = useState<string[]>([]);
-  const [newTargetDate, setNewTargetDate] = useState("");
 
   const [timelineUrl, setTimelineUrl] = useState("");
   const [isTimelineLoading, setIsTimelineLoading] = useState(false);
 
-  useEffect(() => {
-    async function loadInitialData() {
-      try {
-        setIsLoading(true);
-        const list = await fetchArchivesList();
-        setArchiveList(list);
-        if (list.length > 0) {
-          setSelectedArchiveId(list[0].id);
-        }
-      } catch (error: unknown) {
-        setErrorMessage(error instanceof Error ? error.message : "데이터 로드에 실패했습니다.");
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    loadInitialData();
-  }, []);
-
-  useEffect(() => {
-    getSupabaseClient().auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-    });
-
-    const { data: { subscription } } = getSupabaseClient().auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  const activeArchiveId = selectedArchiveId ?? archiveList[0]?.id ?? null;
 
   useEffect(() => {
     async function loadUserVote() {
-      if (!selectedArchiveId || !user) {
+      if (!activeArchiveId || !user) {
         setUserVote(null);
         return;
       }
       try {
-        const vote = await fetchUserVote(selectedArchiveId, user.id);
+        const vote = await fetchUserVote(activeArchiveId, user.id);
         setUserVote(vote);
       } catch {
         setUserVote(null);
       }
     }
     loadUserVote();
-  }, [selectedArchiveId, user]);
+  }, [activeArchiveId, user]);
 
-  const handleAuthSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setErrorMessage(null);
-    try {
-      setIsLoading(true);
-      if (isSignUp) {
-        const { error } = await getSupabaseClient().auth.signUp({
-          email: authEmail,
-          password: authPassword,
-        });
-        if (error) throw error;
-        alert("가입 성공! 로그인되었습니다.");
-      } else {
-        const { error } = await getSupabaseClient().auth.signInWithPassword({
-          email: authEmail,
-          password: authPassword,
-        });
-        if (error) throw error;
-      }
-      setAuthModalOpen(false);
-      setAuthEmail("");
-      setAuthPassword("");
-    } catch (error: unknown) {
-      setErrorMessage(error instanceof Error ? error.message : "인증 처리 실패");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await getSupabaseClient().auth.signOut();
-      setUser(null);
-      setUserVote(null);
-    } catch (error: unknown) {
-      setErrorMessage(error instanceof Error ? error.message : "로그아웃 실패");
-    }
-  };
-
-  const handleCreateArchive = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!inputUrl.trim()) return;
-
-    try {
-      setIsLoading(true);
-      setErrorMessage(null);
-      const newArchive = await analyzeNewsUrl(
-        inputUrl,
-        checkInterval,
-        expiryDate,
-        targetDates
-      );
-      const updatedList = [newArchive, ...archiveList];
-      setArchiveList(updatedList);
-      setSelectedArchiveId(newArchive.id);
-      setMobileView("detail");
-      setIsCreating(false);
-      setInputUrl("");
-      setCheckInterval(CheckInterval.WEEKLY);
-      const threeMonthsLater = new Date();
-      threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
-      setExpiryDate(threeMonthsLater.toISOString().split("T")[0]);
-      setTargetDates([]);
-    } catch (error: unknown) {
-      setErrorMessage(error instanceof Error ? error.message : "분석 중 오류가 발생했습니다.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleAddTimelineItem = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!timelineUrl.trim() || !selectedArchiveId) return;
+    if (!timelineUrl.trim() || !activeArchiveId) return;
 
-    const currentArchive = archiveList.find((archive) => archive.id === selectedArchiveId);
+    const currentArchive = archiveList.find((archive) => archive.id === activeArchiveId);
     if (!currentArchive) return;
 
     try {
@@ -185,7 +78,7 @@ export default function ArchiveDashboard() {
       );
 
       const updatedList = archiveList.map((archive) => {
-        if (archive.id === selectedArchiveId) {
+        if (archive.id === activeArchiveId) {
           const newNotificationLog: NotificationLog = {
             id: "log-" + Date.now(),
             recordedAt: new Date().toISOString(),
@@ -215,20 +108,19 @@ export default function ArchiveDashboard() {
 
   const handleVote = async (status: RealityStatus) => {
     if (!user) {
-      setIsSignUp(false);
-      setAuthModalOpen(true);
+      openAuth();
       return;
     }
-    if (!selectedArchiveId) return;
-    const currentArchive = archiveList.find((archive) => archive.id === selectedArchiveId);
+    if (!activeArchiveId) return;
+    const currentArchive = archiveList.find((archive) => archive.id === activeArchiveId);
     if (!currentArchive) return;
 
     try {
       setErrorMessage(null);
-      const updatedVotes = await updateVote(selectedArchiveId, status, currentArchive.userVotes, user.id);
+      const updatedVotes = await updateVote(activeArchiveId, status, currentArchive.userVotes, user.id);
 
       const updatedList = archiveList.map((archive) => {
-        if (archive.id === selectedArchiveId) {
+        if (archive.id === activeArchiveId) {
           return {
             ...archive,
             userVotes: updatedVotes,
@@ -244,13 +136,13 @@ export default function ArchiveDashboard() {
   };
 
   const handleSimulatePeriodicCheck = async () => {
-    if (!selectedArchiveId) return;
+    if (!activeArchiveId) return;
     try {
       setIsLoading(true);
       setErrorMessage(null);
-      const updatedArchive = await runPeriodicCheckForArchive(selectedArchiveId);
+      const updatedArchive = await runPeriodicCheckForArchive(activeArchiveId);
       const updatedList = archiveList.map((archive) => {
-        if (archive.id === selectedArchiveId) {
+        if (archive.id === activeArchiveId) {
           return updatedArchive;
         }
         return archive;
@@ -261,18 +153,6 @@ export default function ArchiveDashboard() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleAddTargetDate = () => {
-    if (!newTargetDate) return;
-    if (!targetDates.includes(newTargetDate)) {
-      setTargetDates([...targetDates, newTargetDate]);
-    }
-    setNewTargetDate("");
-  };
-
-  const handleRemoveTargetDate = (dateToRemove: string) => {
-    setTargetDates(targetDates.filter((date) => date !== dateToRemove));
   };
 
   const getStatusColorClass = (status: RealityStatus) => {
@@ -306,92 +186,11 @@ export default function ArchiveDashboard() {
     );
   });
 
-  const selectedArchive = archiveList.find((archive) => archive.id === selectedArchiveId);
+  const selectedArchive = archiveList.find((archive) => archive.id === activeArchiveId);
 
   return (
-    <main className="min-h-screen bg-background font-sans">
-      <header className="border-b-[1px] border-border bg-card px-[16px] sm:px-[24px] py-[12px] sm:py-[16px]">
-        <div className="max-w-[1400px] mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-[12px]">
-          <div className="flex items-center space-x-[16px]">
-            <div className="flex items-center gap-[8px]">
-              <Clock className="w-[20px] h-[20px] sm:w-[24px] sm:h-[24px] text-brand-600 animate-pulse shrink-0" />
-              <h1 className="text-[16px] sm:text-[20px] font-bold tracking-tight text-foreground whitespace-nowrap">
-                헷제
-              </h1>
-            </div>
-            <div className="flex bg-muted/60 p-[3px] rounded-[10px] border-[1px] border-border/40">
-              <button
-                onClick={() => setMainViewTab("tracking")}
-                className={`px-[12px] py-[6px] rounded-[8px] text-[12px] font-bold transition-all ${
-                  mainViewTab === "tracking"
-                    ? "bg-card text-brand-600 shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                📌 실시간 추적
-              </button>
-              <button
-                onClick={() => setMainViewTab("leaderboard")}
-                className={`px-[12px] py-[6px] rounded-[8px] text-[12px] font-bold transition-all ${
-                  mainViewTab === "leaderboard"
-                    ? "bg-card text-brand-600 shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                🏆 팩트 & 예측 랭킹보드
-              </button>
-            </div>
-          </div>
-          <div className="flex items-center gap-[8px] sm:gap-[12px] flex-wrap justify-start sm:justify-end w-full sm:w-auto">
-            {user ? (
-              <div className="flex items-center gap-[12px]">
-                <span className="text-[12px] text-muted-foreground font-semibold">
-                  {user.email}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleSignOut}
-                  className="rounded-[6px] text-[13px] hover:bg-muted"
-                >
-                  로그아웃
-                </Button>
-              </div>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setIsSignUp(false);
-                  setAuthModalOpen(true);
-                }}
-                className="rounded-[6px] text-[13px]"
-              >
-                로그인 / 가입
-              </Button>
-            )}
-            <Button 
-              size="sm" 
-              onClick={() => {
-                setIsCreating(true);
-                setSelectedArchiveId(null);
-                setMobileView("detail");
-              }}
-              className="rounded-[6px] text-[13px] bg-brand-600 hover:bg-brand-700"
-            >
-              <Plus className="w-[16px] h-[16px] mr-[4px]" />
-              새 뉴스 분석
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      {mainViewTab === "leaderboard" ? (
-        <div className="max-w-[1400px] mx-auto py-[20px]">
-          <LeaderboardSection />
-        </div>
-      ) : (
-        <div className="max-w-[1400px] mx-auto flex flex-col lg:flex-row h-[calc(100vh-100px)] lg:h-[calc(100vh-73px)] overflow-hidden">
+    <main className="bg-background font-sans">
+        <div className="flex flex-col lg:flex-row h-[calc(100vh-150px)] lg:h-[calc(100vh-73px)] overflow-hidden">
           <aside className={cn("w-full lg:w-[380px] shrink-0 border-r-[1px] border-border bg-card flex flex-col h-full", mobileView === "list" ? "flex" : "hidden lg:flex")}>
           <div className="p-[16px] border-b-[1px] border-border space-y-[12px]">
             <div className="relative">
@@ -408,18 +207,21 @@ export default function ArchiveDashboard() {
 
           <div className="flex-1 overflow-y-auto divide-y-[1px] divide-border/60">
             {filteredArchiveList.map((archive) => {
-              const isSelected = archive.id === selectedArchiveId;
+              const isSelected = archive.id === activeArchiveId;
+              const isSaved = mySaved.has(archive.id);
+              const isTracked = tracked.has(archive.id);
               return (
-                <button
+                <div
                   key={archive.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => {
                     setSelectedArchiveId(archive.id);
-                    setIsCreating(false);
                     setErrorMessage(null);
                     setMobileView("detail");
                   }}
                   className={cn(
-                    "w-full text-left p-[16px] transition-colors flex flex-col gap-[8px]",
+                    "w-full text-left p-[16px] transition-colors flex flex-col gap-[8px] cursor-pointer",
                     isSelected ? "bg-brand-50/70 border-l-[3px] border-brand-600 pl-[13px]" : "hover:bg-muted/40"
                   )}
                 >
@@ -451,7 +253,42 @@ export default function ArchiveDashboard() {
                       팩트 지수 {archive.realityMeter.currentIndex}%
                     </span>
                   </div>
-                </button>
+
+                  <div className="flex items-center gap-[6px] mt-[4px]">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleSaved(archive.id);
+                      }}
+                      className={cn(
+                        "flex items-center gap-[4px] rounded-[999px] border-[1px] px-[8px] py-[4px] text-[10px] font-bold transition-colors",
+                        isSaved
+                          ? "bg-brand-50 text-brand-600 border-brand-100"
+                          : "bg-card text-muted-foreground border-border hover:bg-muted/40"
+                      )}
+                    >
+                      <Bookmark className="w-[11px] h-[11px]" />
+                      {isSaved ? "My HETJE" : "＋ My HETJE"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleTracked(archive.id);
+                      }}
+                      className={cn(
+                        "flex items-center gap-[4px] rounded-[999px] border-[1px] px-[8px] py-[4px] text-[10px] font-bold transition-colors",
+                        isTracked
+                          ? "bg-brand-50 text-brand-600 border-brand-100"
+                          : "bg-card text-muted-foreground border-border hover:bg-muted/40"
+                      )}
+                    >
+                      <Pin className="w-[11px] h-[11px]" />
+                      {isTracked ? "Tomorrow" : "📎 Tomorrow"}
+                    </button>
+                  </div>
+                </div>
               );
             })}
 
@@ -481,126 +318,7 @@ export default function ArchiveDashboard() {
             </div>
           )}
 
-          {isCreating ? (
-            <div className="max-w-[700px] mx-auto my-[20px] sm:my-[40px] px-[16px] sm:px-[24px]">
-              <Card className="border-border/60 shadow-md rounded-[12px]">
-                <CardHeader className="border-b-[1px] border-border/50 pb-[16px]">
-                  <CardTitle className="text-[18px] font-bold">새로운 뉴스 등록 및 분석 설정</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-[24px] space-y-[20px]">
-                  <form onSubmit={handleCreateArchive} className="space-y-[20px]">
-                    <div className="space-y-[6px]">
-                      <label className="text-[13px] font-semibold text-foreground">뉴스 기사 URL</label>
-                      <Input
-                        type="url"
-                        placeholder="https://news.example.com/article/123"
-                        value={inputUrl}
-                        onChange={(event) => setInputUrl(event.target.value)}
-                        className="rounded-[6px] h-[40px]"
-                        required
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-[16px]">
-                      <div className="space-y-[6px]">
-                        <label className="text-[13px] font-semibold text-foreground">AI 현실성 체크 주기</label>
-                        <select
-                          value={checkInterval}
-                          onChange={(event) => setCheckInterval(event.target.value as CheckInterval)}
-                          className="w-full h-[40px] border-[1px] border-input rounded-[6px] px-[12px] bg-background text-[13px] focus:outline-none focus:ring-[2px] focus:ring-ring"
-                        >
-                          <option value={CheckInterval.DAILY}>매일</option>
-                          <option value={CheckInterval.WEEKLY}>매주</option>
-                          <option value={CheckInterval.MONTHLY}>매월</option>
-                        </select>
-                      </div>
-
-                      <div className="space-y-[6px]">
-                        <label className="text-[13px] font-semibold text-foreground">감시 종료(만료) 일자</label>
-                        <Input
-                          type="date"
-                          value={expiryDate}
-                          onChange={(event) => setExpiryDate(event.target.value)}
-                          className="rounded-[6px] h-[40px] text-[13px]"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-[8px]">
-                      <label className="text-[13px] font-semibold text-foreground flex items-center justify-between">
-                        <span>특정 점검 일자 추가</span>
-                        <span className="text-[11px] text-muted-foreground font-normal">중간 점검이 강제되는 특별 일정을 지정합니다.</span>
-                      </label>
-                      <div className="flex gap-[8px]">
-                        <Input
-                          type="date"
-                          value={newTargetDate}
-                          onChange={(event) => setNewTargetDate(event.target.value)}
-                          className="rounded-[6px] h-[36px] flex-1 text-[13px]"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={handleAddTargetDate}
-                          className="h-[36px] rounded-[6px]"
-                        >
-                          추가
-                        </Button>
-                      </div>
-
-                      {targetDates.length > 0 && (
-                        <div className="flex flex-wrap gap-[6px] pt-[6px]">
-                          {targetDates.map((date) => (
-                            <Badge key={date} variant="secondary" className="flex items-center gap-[4px] py-[3px] px-[8px] rounded-[4px] text-[11px]">
-                              {date}
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveTargetDate(date)}
-                                className="text-muted-foreground hover:text-foreground"
-                              >
-                                <Trash2 className="w-[12px] h-[12px]" />
-                              </button>
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-end gap-[12px] pt-[8px] border-t-[1px] border-border/50">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() => {
-                          setIsCreating(false);
-                          if (archiveList.length > 0) {
-                            setSelectedArchiveId(archiveList[0].id);
-                          }
-                          setMobileView("list");
-                        }}
-                        className="rounded-[6px] h-[40px] text-[13px]"
-                      >
-                        취소
-                      </Button>
-                      <Button
-                        type="submit"
-                        disabled={isLoading || !inputUrl}
-                        className="rounded-[6px] h-[40px] text-[13px] bg-brand-600 hover:bg-brand-700"
-                      >
-                        {isLoading ? (
-                          <>
-                            <Loader2 className="w-[16px] h-[16px] mr-[6px] animate-spin" />
-                            뉴스 분석 및 설정 중...
-                          </>
-                        ) : (
-                          "추적 시작하기"
-                        )}
-                      </Button>
-                    </div>
-                  </form>
-                </CardContent>
-              </Card>
-            </div>
-          ) : selectedArchive ? (
+          {selectedArchive ? (
             <div className="max-w-[1000px] mx-auto p-[16px] sm:p-[24px] space-y-[16px] sm:space-y-[24px]">
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-[16px] sm:gap-[24px]">
                 <div className="lg:col-span-2 space-y-[16px] sm:space-y-[24px]">
@@ -1094,71 +812,12 @@ export default function ArchiveDashboard() {
               <Clock className="w-[48px] h-[48px] text-muted-foreground/50 mb-[16px] animate-spin-slow" />
               <h3 className="text-[16px] font-semibold text-foreground mb-[4px]">선택된 뉴스 없음</h3>
               <p className="text-[13px] text-muted-foreground max-w-[320px] leading-relaxed">
-                좌측 목록에서 뉴스를 선택하거나, 우측 상단의 새 뉴스 분석 버튼을 눌러 새로운 감시 일정을 등록하십시오.
+                좌측 목록에서 HETJE를 선택하거나, 우측 상단의 <b>＋ 새 HETJE</b> 버튼을 눌러 새로운 HETJE를 등록하세요.
               </p>
             </div>
           )}
         </section>
       </div>
-      )}
-
-      {authModalOpen && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-[16px]">
-          <div className="bg-card w-full max-w-[400px] rounded-[12px] border-[1px] border-border shadow-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="p-[24px] border-b-[1px] border-border">
-              <h2 className="text-[18px] font-bold text-foreground">
-                {isSignUp ? "헷제 서비스 회원가입" : "헷제 서비스 로그인"}
-              </h2>
-              <p className="text-[12px] text-muted-foreground mt-[2px]">
-                시민 평가단 피드백 투표에 참여하기 위해 접속해 주십시오.
-              </p>
-            </div>
-            <form onSubmit={handleAuthSubmit} className="p-[24px] space-y-[16px]">
-              <div className="space-y-[6px]">
-                <label className="text-[12px] font-semibold text-foreground">이메일 주소</label>
-                <Input
-                  type="email"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  placeholder="name@company.com"
-                  required
-                />
-              </div>
-              <div className="space-y-[6px]">
-                <label className="text-[12px] font-semibold text-foreground">비밀번호</label>
-                <Input
-                  type="password"
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                />
-              </div>
-              <div className="flex flex-col gap-[8px] pt-[8px]">
-                <Button type="submit" className="w-full bg-brand-600 hover:bg-brand-700 text-white rounded-[6px] h-[40px] text-[13px]">
-                  {isSignUp ? "가입 및 로그인" : "로그인하기"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setIsSignUp(!isSignUp)}
-                  className="w-full text-[12px] text-brand-600 hover:text-brand-700"
-                >
-                  {isSignUp ? "이미 계정이 있으신가요? 로그인" : "계정이 없으신가요? 회원가입"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setAuthModalOpen(false)}
-                  className="w-full text-[12px] rounded-[6px]"
-                >
-                  닫기
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {reportModalOpen && selectedArchive && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-[16px] overflow-y-auto no-print">

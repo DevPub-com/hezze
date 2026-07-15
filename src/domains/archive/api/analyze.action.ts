@@ -153,68 +153,123 @@ interface PlayerResponse {
   };
 }
 
-async function fetchYoutubeTranscript(youtubeVideoId: string): Promise<{ title: string; textContent: string }> {
-  const response = await fetch(`https://www.youtube.com/watch?v=${youtubeVideoId}&bpctr=9999999999&has_verified=1`, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-    },
-  });
+function extractJsonByBrace(source: string, marker: string): string | null {
+  const markerIndex = source.indexOf(marker);
+  if (markerIndex === -1) return null;
+  const jsonStart = source.indexOf("{", markerIndex);
+  if (jsonStart === -1) return null;
 
-  if (!response.ok) {
-    throw new Error("유튜브 페이지를 가져올 수 없습니다.");
-  }
-
-  const html = await response.text();
-  const $ = cheerio.load(html);
-
-  let title = $("title").text().replace(" - YouTube", "") || "";
-  let playerResponse: PlayerResponse | null = null;
-  let jsonString = "";
-
-  $("script").each((_, element) => {
-    const text = $(element).html() || "";
-    if (text.includes("ytInitialPlayerResponse")) {
-      const startIndex = text.indexOf("ytInitialPlayerResponse");
-      if (startIndex !== -1) {
-        const jsonStart = text.indexOf("{", startIndex);
-        if (jsonStart !== -1) {
-          let braceCount = 0;
-          let jsonEnd = -1;
-          for (let index = jsonStart; index < text.length; index++) {
-            if (text[index] === "{") {
-              braceCount++;
-            } else if (text[index] === "}") {
-              braceCount--;
-              if (braceCount === 0) {
-                jsonEnd = index;
-                break;
-              }
-            }
-          }
-          if (jsonEnd !== -1) {
-            jsonString = text.substring(jsonStart, jsonEnd + 1);
-          }
-        }
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = jsonStart; index < source.length; index++) {
+    const char = source[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (char === "{") {
+      depth++;
+    } else if (char === "}") {
+      depth--;
+      if (depth === 0) {
+        return source.substring(jsonStart, index + 1);
       }
     }
-  });
-
-  if (!jsonString) {
-    const match = html.match(/ytInitialPlayerResponse\s*=\s*({.+?});/);
-    if (match) {
-      jsonString = match[1];
-    }
   }
+  return null;
+}
 
-  if (jsonString) {
+function parsePlayerResponse(html: string): PlayerResponse | null {
+  const rawJson =
+    extractJsonByBrace(html, "ytInitialPlayerResponse") ||
+    extractJsonByBrace(html, "var ytInitialPlayerResponse");
+  if (!rawJson) return null;
+  try {
+    return JSON.parse(rawJson) as PlayerResponse;
+  } catch {
+    return null;
+  }
+}
+
+const YOUTUBE_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+  // EU/봇 동의 인터스티셜을 회피해 player 정보가 누락되는 것을 방지합니다.
+  Cookie: "CONSENT=YES+cb.20210328-17-p0.en+FX+000",
+};
+
+async function fetchYoutubeHtml(youtubeVideoId: string): Promise<string> {
+  const url = `https://www.youtube.com/watch?v=${youtubeVideoId}&bpctr=9999999999&has_verified=1&hl=ko`;
+  let lastError = "알 수 없는 오류";
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      playerResponse = JSON.parse(jsonString) as PlayerResponse;
-    } catch {
+      const response = await fetch(url, { headers: YOUTUBE_HEADERS });
+      if (!response.ok) {
+        lastError = `HTTP ${response.status}`;
+        continue;
+      }
+      const html = await response.text();
+      if (html.includes("ytInitialPlayerResponse")) {
+        return html;
+      }
+      lastError = "플레이어 정보를 찾을 수 없음(봇 차단/동의 페이지 가능성).";
+    } catch (error: unknown) {
+      lastError = error instanceof Error ? error.message : "요청 실패";
     }
   }
+  throw new Error(`유튜브 페이지를 가져올 수 없습니다. (${lastError})`);
+}
 
-  if (playerResponse && playerResponse.videoDetails?.title && !title) {
+async function fetchCaptionText(baseUrl: string): Promise<string> {
+  const jsonUrl = baseUrl.includes("fmt=") ? baseUrl : `${baseUrl}&fmt=json3`;
+  try {
+    const jsonResponse = await fetch(jsonUrl, { headers: YOUTUBE_HEADERS });
+    if (jsonResponse.ok) {
+      const data = (await jsonResponse.json()) as { events?: { segs?: { utf8?: string }[] }[] };
+      const text = (data.events || [])
+        .flatMap((event) => event.segs || [])
+        .map((seg) => seg.utf8 || "")
+        .join("")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (text) return text;
+    }
+  } catch {
+  }
+
+  try {
+    const xmlResponse = await fetch(baseUrl, { headers: YOUTUBE_HEADERS });
+    if (!xmlResponse.ok) return "";
+    const xml = await xmlResponse.text();
+    const xmlCheerio = cheerio.load(xml, { xmlMode: true });
+    return xmlCheerio("text")
+      .map((_, element) => xmlCheerio(element).text())
+      .get()
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+  } catch {
+    return "";
+  }
+}
+
+async function fetchYoutubeTranscript(youtubeVideoId: string): Promise<{ title: string; textContent: string }> {
+  const html = await fetchYoutubeHtml(youtubeVideoId);
+  const $ = cheerio.load(html);
+  const playerResponse = parsePlayerResponse(html);
+
+  let title = $("title").text().replace(" - YouTube", "").trim();
+  if (!title && playerResponse?.videoDetails?.title) {
     title = playerResponse.videoDetails.title;
   }
 
@@ -234,25 +289,7 @@ async function fetchYoutubeTranscript(youtubeVideoId: string): Promise<{ title: 
     captionTracks.find((track) => track.languageCode.startsWith("en")) ||
     captionTracks[0];
 
-  const transcriptResponse = await fetch(selectedTrack.baseUrl);
-  if (!transcriptResponse.ok) {
-    const description = playerResponse?.videoDetails?.shortDescription || "";
-    const author = playerResponse?.videoDetails?.author || "";
-    const fallbackText = `${title}\n${author}\n${description}`.trim();
-    if (!fallbackText) {
-      throw new Error("자막 데이터를 불러올 수 없습니다.");
-    }
-    return { title, textContent: fallbackText };
-  }
-
-  const xml = await transcriptResponse.text();
-  const xmlCheerio = cheerio.load(xml, { xmlMode: true });
-  const textContent = xmlCheerio("text")
-    .map((_, element) => xmlCheerio(element).text())
-    .get()
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const textContent = await fetchCaptionText(selectedTrack.baseUrl);
 
   if (!textContent) {
     const description = playerResponse?.videoDetails?.shortDescription || "";
@@ -623,6 +660,160 @@ ${textContent}
     console.error("뉴스 분석 실패:", error);
     throw new Error(error instanceof Error ? error.message : "뉴스 분석에 실패했습니다.");
   }
+}
+
+export async function createDirectArchive(
+  statement: string,
+  context: string = "",
+  checkInterval: CheckInterval = CheckInterval.WEEKLY,
+  expiryDate: string = "",
+  targetDates: string[] = [],
+  authorName: string = "나"
+): Promise<ArchiveReference> {
+  const trimmedStatement = statement.trim();
+  if (!trimmedStatement) {
+    throw new Error("작성한 생각을 입력해 주십시오.");
+  }
+
+  const contextDescription = context.trim() || "직접 작성한 HETJE입니다.";
+  const referenceNumber = "HTJ-" + Math.floor(Math.random() * 10000);
+  const defaultExpiryDate = expiryDate || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const realityIndex = 50;
+  const status = RealityStatus.DEBATING;
+
+  const { data: archiveData, error: archiveError } = await getSupabaseClient()
+    .from("archives")
+    .insert({
+      reference_number: referenceNumber,
+      category: CategoryType.ENTRY_QUOTE,
+      news_category: "직접 작성",
+      core_claim_quote: trimmedStatement,
+      core_claim_context: contextDescription,
+      speaker_name: authorName,
+      speaker_position: "작성자",
+      speaker_organization: "My HETJE",
+      reality_index: realityIndex,
+      status,
+      check_interval: checkInterval,
+      expiry_date: defaultExpiryDate,
+      target_dates: targetDates,
+      user_votes: {
+        [RealityStatus.REALIZING]: 0,
+        [RealityStatus.FADING]: 0,
+        [RealityStatus.DEBATING]: 0,
+        [RealityStatus.DEFUNCT]: 0,
+        [RealityStatus.REALIZED]: 0,
+      },
+    })
+    .select()
+    .single();
+
+  if (archiveError || !archiveData) {
+    throw new Error(`DB 저장 실패: ${archiveError?.message || "알 수 없는 오류"}`);
+  }
+
+  const { error: timelineError } = await getSupabaseClient()
+    .from("timelines")
+    .insert({
+      archive_id: archiveData.id,
+      source_venue: "직접 작성",
+      source_url: "",
+      title: trimmedStatement,
+      summary: contextDescription,
+      reality_index: realityIndex,
+      status,
+    });
+
+  if (timelineError) {
+    throw new Error(`타임라인 DB 저장 실패: ${timelineError.message}`);
+  }
+
+  const { error: logError } = await getSupabaseClient()
+    .from("notification_logs")
+    .insert({
+      archive_id: archiveData.id,
+      message: "✍️ 직접 작성한 HETJE를 등록했어요. 이제 현실이 어떻게 흘러가는지 추적할 수 있어요.",
+    });
+
+  if (logError) {
+    throw new Error(`알림 로그 DB 저장 실패: ${logError.message}`);
+  }
+
+  const { data: fullArchive, error: fetchError } = await getSupabaseClient()
+    .from("archives")
+    .select(`
+      *,
+      timelines (*),
+      notification_logs (*)
+    `)
+    .eq("id", archiveData.id)
+    .single();
+
+  if (fetchError || !fullArchive) {
+    throw new Error(`DB 조회 실패: ${fetchError?.message || "알 수 없는 오류"}`);
+  }
+
+  const dbArchive = fullArchive as DBArchive;
+
+  const timelineItems: TimelineItem[] = (dbArchive.timelines || []).map((timelineItem) => ({
+    id: timelineItem.id,
+    recordedAt: timelineItem.recorded_at,
+    sourceVenue: timelineItem.source_venue,
+    sourceUrl: timelineItem.source_url,
+    title: timelineItem.title,
+    summary: timelineItem.summary,
+    realityIndex: timelineItem.reality_index,
+    status: timelineItem.status as RealityStatus,
+  }));
+
+  const notificationLogsList: NotificationLog[] = (dbArchive.notification_logs || []).map((notificationLogItem) => ({
+    id: notificationLogItem.id,
+    recordedAt: notificationLogItem.recorded_at,
+    message: notificationLogItem.message,
+  }));
+
+  return {
+    id: dbArchive.id,
+    referenceNumber: dbArchive.reference_number,
+    category: dbArchive.category as CategoryType,
+    newsCategory: dbArchive.news_category,
+    coreClaim: {
+      quote: dbArchive.core_claim_quote,
+      contextDescription: dbArchive.core_claim_context,
+    },
+    speaker: {
+      id: "speaker-" + dbArchive.id,
+      name: dbArchive.speaker_name,
+      position: dbArchive.speaker_position,
+      organization: dbArchive.speaker_organization,
+      imageUrl: "",
+    },
+    evidence: {
+      recordedAt: dbArchive.created_at,
+      sourceVenue: "직접 작성",
+      sourceUrl: "",
+    },
+    realityMeter: {
+      currentIndex: dbArchive.reality_index,
+      status: dbArchive.status as RealityStatus,
+    },
+    observationStats: {
+      totalObservers: 1,
+      distribution: {
+        [RealityStatus.REALIZING]: 0,
+        [RealityStatus.FADING]: 0,
+        [RealityStatus.DEBATING]: dbArchive.status === "DEBATING" ? 1 : 0,
+        [RealityStatus.DEFUNCT]: 0,
+        [RealityStatus.REALIZED]: 0,
+      },
+    },
+    checkInterval: dbArchive.check_interval as CheckInterval,
+    expiryDate: dbArchive.expiry_date,
+    targetDates: dbArchive.target_dates || [],
+    timeline: timelineItems,
+    notificationLogs: notificationLogsList,
+    userVotes: dbArchive.user_votes as Record<RealityStatus, number>,
+  };
 }
 
 export async function analyzeTimelineUpdate(
