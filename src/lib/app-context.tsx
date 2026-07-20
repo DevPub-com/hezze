@@ -83,7 +83,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         return;
       }
       try {
-        const { saved, tracked } = await fetchUserBookmarks(user.id);
+        const { saved, tracked } = await fetchUserBookmarks();
         if (!cancelled) {
           setMySaved(new Set(saved));
           setTracked(new Set(tracked));
@@ -110,7 +110,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       else next.delete(id);
       return next;
     });
-    setBookmark(user.id, id, "saved", active).catch(() => {
+    setBookmark(id, "saved", active).catch(() => {
       setMySaved((prev) => {
         const next = new Set(prev);
         if (active) next.delete(id);
@@ -133,7 +133,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       else next.delete(id);
       return next;
     });
-    setBookmark(user.id, id, "tracked", active).catch(() => {
+    setBookmark(id, "tracked", active).catch(() => {
       setTracked((prev) => {
         const next = new Set(prev);
         if (active) next.delete(id);
@@ -151,14 +151,14 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const markSaved = useCallback((id: string) => {
     setMySaved((prev) => new Set(prev).add(id));
     if (user) {
-      setBookmark(user.id, id, "saved", true).catch(() => {});
+      setBookmark(id, "saved", true).catch(() => {});
     }
   }, [user]);
 
   const markTracked = useCallback((id: string) => {
     setTracked((prev) => new Set(prev).add(id));
     if (user) {
-      setBookmark(user.id, id, "tracked", true).catch(() => {});
+      setBookmark(id, "tracked", true).catch(() => {});
     }
   }, [user]);
 

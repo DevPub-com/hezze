@@ -8,7 +8,7 @@ import { AppDataProvider, useAppData } from "@/lib/app-context";
 import { Topbar } from "./Topbar";
 import { BottomNavigation } from "./BottomNavigation";
 import { RegisterModal } from "@/components/register/RegisterModal";
-import { getAuthErrorMessage, getSignUpOutcome } from "@/lib/auth-flow";
+import { getAuthErrorMessage, getAuthRedirectUrl, getSignUpOutcome } from "@/lib/auth-flow";
 
 function AuthModal() {
   const { authModalOpen, closeAuth } = useAppData();
@@ -21,6 +21,31 @@ function AuthModal() {
 
   if (!authModalOpen) return null;
 
+  const handleResendConfirmation = async () => {
+    const email = authEmail.trim();
+    if (!email) {
+      setError("인증 메일을 받을 이메일 주소를 입력해 주세요.");
+      return;
+    }
+
+    setError(null);
+    setNotice(null);
+    setIsBusy(true);
+    try {
+      const { error } = await getSupabaseClient().auth.resend({
+        type: "signup",
+        email,
+        options: { emailRedirectTo: getAuthRedirectUrl(window.location.origin) },
+      });
+      if (error) throw error;
+      setNotice("인증 메일을 다시 보냈습니다. 가장 최근에 받은 링크를 열어 주세요.");
+    } catch (err: unknown) {
+      setError(getAuthErrorMessage(err));
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
@@ -31,7 +56,7 @@ function AuthModal() {
         const { data, error } = await getSupabaseClient().auth.signUp({
           email: authEmail.trim(),
           password: authPassword,
-          options: { emailRedirectTo: window.location.origin },
+          options: { emailRedirectTo: getAuthRedirectUrl(window.location.origin) },
         });
         if (error) throw error;
         const outcome = getSignUpOutcome(data);
@@ -120,6 +145,17 @@ function AuthModal() {
             >
               {isSignUp ? "이미 계정이 있으신가요? 로그인" : "계정이 없으신가요? 회원가입"}
             </Button>
+            {!isSignUp && authEmail.trim() && (
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={isBusy}
+                onClick={handleResendConfirmation}
+                className="w-full text-[12px] text-muted-foreground hover:text-brand-700"
+              >
+                인증 메일 다시 보내기
+              </Button>
+            )}
             <Button type="button" variant="outline" onClick={closeAuth} className="w-full text-[12px] rounded-[6px]">
               닫기
             </Button>

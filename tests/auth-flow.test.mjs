@@ -56,6 +56,41 @@ test("signup without a session requires email confirmation instead of claiming l
   });
 });
 
+test("auth emails return to the dedicated confirmation route", async () => {
+  const { getAuthRedirectUrl } = await loadAuthFlow();
+
+  assert.equal(getAuthRedirectUrl("http://localhost:3000"), "http://localhost:3000/auth/confirm");
+  assert.equal(getAuthRedirectUrl("https://hetje.example/"), "https://hetje.example/auth/confirm");
+});
+
+test("auth callback parameters distinguish PKCE, token hash, and provider errors", async () => {
+  const { getAuthCallbackAction } = await loadAuthFlow();
+
+  assert.deepEqual(getAuthCallbackAction("https://hetje.example/auth/confirm?code=abc"), {
+    kind: "exchange_code",
+    code: "abc",
+  });
+  assert.deepEqual(
+    getAuthCallbackAction("https://hetje.example/auth/confirm?token_hash=hash&type=signup"),
+    { kind: "verify_otp", tokenHash: "hash", type: "signup" }
+  );
+  assert.deepEqual(
+    getAuthCallbackAction("https://hetje.example/auth/confirm#error_code=otp_expired&error_description=Link+expired"),
+    { kind: "error", message: "Link expired" }
+  );
+});
+
+test("the app has a confirmation callback and a resend action", async () => {
+  const callback = await readFile("src/app/auth/confirm/page.tsx", "utf8").catch(() => "");
+  const shell = await readFile("src/components/shell/AppShell.tsx", "utf8");
+
+  assert.match(callback, /exchangeCodeForSession/);
+  assert.match(callback, /verifyOtp/);
+  assert.match(shell, /getAuthRedirectUrl/);
+  assert.match(shell, /auth\.resend/);
+  assert.match(shell, /인증 메일 다시 보내기/);
+});
+
 test("the text logo links home and the decorative H icon is removed", async () => {
   const topbar = await readFile("src/components/shell/Topbar.tsx", "utf8");
 

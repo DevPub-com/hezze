@@ -1,5 +1,3 @@
-"use server";
-
 import { getSupabaseClient } from "@/lib/supabase";
 
 export type BookmarkKind = "saved" | "tracked";
@@ -9,10 +7,20 @@ interface DBBookmark {
   kind: string;
 }
 
-export async function fetchUserBookmarks(
-  userId: string
-): Promise<{ saved: string[]; tracked: string[] }> {
-  const { data, error } = await getSupabaseClient()
+async function getAuthenticatedBookmarkClient() {
+  const client = getSupabaseClient();
+  const { data: { session }, error } = await client.auth.getSession();
+
+  if (error || !session) {
+    throw new Error("My HETJE를 저장하려면 먼저 로그인해 주세요.");
+  }
+
+  return { client, userId: session.user.id };
+}
+
+export async function fetchUserBookmarks(): Promise<{ saved: string[]; tracked: string[] }> {
+  const { client, userId } = await getAuthenticatedBookmarkClient();
+  const { data, error } = await client
     .from("bookmarks")
     .select("archive_id, kind")
     .eq("user_id", userId);
@@ -36,12 +44,11 @@ export async function fetchUserBookmarks(
 }
 
 export async function setBookmark(
-  userId: string,
   archiveId: string,
   kind: BookmarkKind,
   active: boolean
 ): Promise<void> {
-  const client = getSupabaseClient();
+  const { client, userId } = await getAuthenticatedBookmarkClient();
 
   if (active) {
     const { error } = await client

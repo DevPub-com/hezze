@@ -50,3 +50,13 @@ test("secondary mobile pages do not repeat oversized promotional headings", asyn
     assert.doesNotMatch(page, /<h1/);
   }
 });
+
+test("board detail offers a persistent Tomorrow action", async () => {
+  const board = await readFile("src/components/board/BoardView.tsx", "utf8");
+
+  assert.match(board, /tracked\.has\(selectedArchive\.id\)/);
+  assert.match(board, /toggleTracked\(selectedArchive\.id\)/);
+  assert.match(board, /Tomorrow에 추가/);
+  assert.match(board, /Tomorrow 추가됨/);
+  assert.match(board, /aria-pressed=\{tracked\.has\(selectedArchive\.id\)\}/);
+});

@@ -20,7 +20,7 @@ async function getAuthenticatedClient() {
 
 function relationMutationError(action: "저장" | "삭제", message?: string) {
   if (message?.toLowerCase().includes("row-level security")) {
-    return new Error(`관계 ${action} 권한을 확인할 수 없습니다. 다시 로그인해 주세요.`);
+    return new Error(`관계 저장 설정이 완료되지 않았습니다. Supabase 정책을 적용해 주세요. (${action})`);
   }
 
   return new Error(`관계 ${action} 실패: ${message || "알 수 없는 오류"}`);

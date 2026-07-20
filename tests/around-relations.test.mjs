@@ -34,3 +34,10 @@ test("relations SQL grants reads publicly and mutations to authenticated users",
   assert.match(sql, /for delete\s+to authenticated\s+using \(true\)/);
   assert.doesNotMatch(sql, /relations_all_access"\s+on public\.relations\s+for all/);
 });
+
+test("relation RLS failures explain missing Supabase setup instead of blaming login", async () => {
+  const relationApi = await readFile("src/domains/archive/api/relation.action.ts", "utf8");
+
+  assert.match(relationApi, /관계 저장 설정이 완료되지 않았습니다/);
+  assert.doesNotMatch(relationApi, /관계 \$\{action\} 권한을 확인할 수 없습니다\. 다시 로그인해 주세요/);
+});

@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { FileText, AlertCircle, Link as LinkIcon, Users, Loader2, Search, Bell, Clock, ArrowLeft, Sparkles, Bookmark, Pin } from "lucide-react";
-import { analyzeTimelineUpdate, updateVote, fetchUserVote, runPeriodicCheckForArchive } from "@/domains/archive/api/analyze.action";
+import { analyzeTimelineUpdate, runPeriodicCheckForArchive } from "@/domains/archive/api/analyze.action";
+import { updateVote, fetchUserVote } from "@/domains/archive/api/vote.action";
 import { ViralShareModal } from "@/components/archive/ViralShareModal";
 import { useAppData } from "@/lib/app-context";
 
@@ -52,7 +53,7 @@ export function BoardView() {
         return;
       }
       try {
-        const vote = await fetchUserVote(activeArchiveId, user.id);
+        const vote = await fetchUserVote(activeArchiveId);
         setUserVote(vote);
       } catch {
         setUserVote(null);
@@ -117,7 +118,7 @@ export function BoardView() {
 
     try {
       setErrorMessage(null);
-      const updatedVotes = await updateVote(activeArchiveId, status, currentArchive.userVotes, user.id);
+      const updatedVotes = await updateVote(activeArchiveId, status, currentArchive.userVotes);
 
       const updatedList = archiveList.map((archive) => {
         if (archive.id === activeArchiveId) {
@@ -386,16 +387,35 @@ export function BoardView() {
                           </div>
                         </div>
 
-                        {selectedArchive.evidence.sourceUrl && (
-                          <a
-                            href={selectedArchive.evidence.sourceUrl}
-                            target="_blank; noreferrer"
-                            className="inline-flex items-center justify-center gap-[6px] rounded-[6px] text-[12px] font-semibold border-[1px] border-brand-200 text-brand-600 hover:bg-brand-50 shrink-0 w-full sm:w-auto h-[36px] px-[12px] transition-colors"
+                        <div className="flex w-full flex-col gap-[8px] sm:w-auto sm:flex-row">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            aria-pressed={tracked.has(selectedArchive.id)}
+                            onClick={() => toggleTracked(selectedArchive.id)}
+                            className={cn(
+                              "h-[36px] w-full shrink-0 gap-[6px] rounded-[6px] px-[12px] text-[12px] font-bold transition-colors sm:w-auto",
+                              tracked.has(selectedArchive.id)
+                                ? "border-brand-600 bg-brand-600 text-white hover:bg-brand-700 hover:text-white"
+                                : "border-brand-200 text-brand-600 hover:bg-brand-50 hover:text-brand-700"
+                            )}
                           >
-                            <LinkIcon className="w-[14px] h-[14px]" />
-                            원본 기사 바로가기
-                          </a>
-                        )}
+                            <Pin className={cn("h-[14px] w-[14px]", tracked.has(selectedArchive.id) && "fill-current")} />
+                            {tracked.has(selectedArchive.id) ? "Tomorrow 추가됨" : "Tomorrow에 추가"}
+                          </Button>
+
+                          {selectedArchive.evidence.sourceUrl && (
+                            <a
+                              href={selectedArchive.evidence.sourceUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex h-[36px] w-full shrink-0 items-center justify-center gap-[6px] rounded-[6px] border-[1px] border-brand-200 px-[12px] text-[12px] font-semibold text-brand-600 transition-colors hover:bg-brand-50 sm:w-auto"
+                            >
+                              <LinkIcon className="h-[14px] w-[14px]" />
+                              원본 기사 바로가기
+                            </a>
+                          )}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>

@@ -11,8 +11,8 @@ import {
   analyzeNewsUrlPreview,
   createArchiveFromNewsPreview,
   NewsAnalysisPreview,
-  updateVote,
 } from "@/domains/archive/api/analyze.action";
+import { updateVote } from "@/domains/archive/api/vote.action";
 import { useAppData } from "@/lib/app-context";
 
 type Step = "source" | "agenda" | "route" | "position" | "done";
@@ -125,7 +125,7 @@ export function RegisterModal() {
     setPosition(status);
     if (status && createdArchive && user) {
       try {
-        const updatedVotes = await updateVote(createdArchive.id, status, createdArchive.userVotes, user.id);
+        const updatedVotes = await updateVote(createdArchive.id, status, createdArchive.userVotes);
         setArchiveList((prev) =>
           prev.map((a) => (a.id === createdArchive.id ? { ...a, userVotes: updatedVotes } : a))
         );
