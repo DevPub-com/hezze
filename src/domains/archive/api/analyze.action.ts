@@ -304,12 +304,25 @@ async function fetchYoutubeTranscript(youtubeVideoId: string): Promise<{ title: 
   return { title, textContent };
 }
 
-export async function analyzeNewsUrl(
-  url: string,
-  checkInterval: CheckInterval = CheckInterval.WEEKLY,
-  expiryDate: string = "",
-  targetDates: string[] = []
-): Promise<ArchiveReference> {
+export interface NewsAnalysisPreview {
+  sourceUrl: string;
+  sourceVenue: string;
+  title: string;
+  summary: string;
+  newsCategory: string;
+  speakerName: string;
+  speakerPosition: string;
+  speakerOrganization: string;
+  realityIndex: number;
+  status: RealityStatus;
+}
+
+export async function analyzeNewsUrlPreview(url: string): Promise<NewsAnalysisPreview> {
+  const trimmedUrl = url.trim();
+  if (!trimmedUrl) {
+    throw new Error("분석할 기사 또는 YouTube 링크를 입력해 주십시오.");
+  }
+
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY가 설정되지 않았습니다.");
@@ -318,13 +331,13 @@ export async function analyzeNewsUrl(
   const openai = new OpenAI({ apiKey });
 
   try {
-    const isYoutube = url.includes("youtube.com") || url.includes("youtu.be");
+    const isYoutube = trimmedUrl.includes("youtube.com") || trimmedUrl.includes("youtu.be");
     let textContent = "";
     let title = "";
     let sourceVenue = "알 수 없음";
 
     if (isYoutube) {
-      const videoIdMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/ ]{11})/i);
+      const videoIdMatch = trimmedUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/ ]{11})/i);
       const youtubeVideoId = videoIdMatch ? videoIdMatch[1] : null;
       if (!youtubeVideoId) {
         throw new Error("유효한 유튜브 동영상 식별자를 찾을 수 없습니다.");
@@ -334,7 +347,7 @@ export async function analyzeNewsUrl(
       textContent = transcriptData.textContent;
       sourceVenue = "YouTube";
     } else {
-      const response = await fetch(url, {
+      const response = await fetch(trimmedUrl, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         },
@@ -362,7 +375,7 @@ export async function analyzeNewsUrl(
 
       title = $("title").text() || "제목 없음";
       try {
-        sourceVenue = new URL(url).hostname.replace("www.", "");
+        sourceVenue = new URL(trimmedUrl).hostname.replace("www.", "");
       } catch {
       }
     }
@@ -517,149 +530,181 @@ ${textContent}
       if (!resultText) throw new Error("AI로부터 응답을 받지 못했습니다.");
       parsedData = JSON.parse(cleanJsonText(resultText));
     }
-    const realityIndex = parsedData.scoreSourceReliability + parsedData.scoreFeasibility + parsedData.scoreEvidence;
-    const referenceNumber = "SIG-" + Math.floor(Math.random() * 10000);
-    const defaultExpiryDate = expiryDate || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-    const { data: archiveData, error: archiveError } = await getSupabaseClient()
-      .from("archives")
-      .insert({
-        reference_number: referenceNumber,
-        category: CategoryType.ENTRY_QUOTE,
-        news_category: parsedData.newsCategory,
-        core_claim_quote: parsedData.title,
-        core_claim_context: parsedData.summary,
-        speaker_name: parsedData.speakerName,
-        speaker_position: parsedData.speakerPosition,
-        speaker_organization: parsedData.speakerOrganization,
-        reality_index: realityIndex,
-        status: parsedData.status,
-        check_interval: checkInterval,
-        expiry_date: defaultExpiryDate,
-        target_dates: targetDates,
-        user_votes: {
-          [RealityStatus.REALIZING]: 0,
-          [RealityStatus.FADING]: 0,
-          [RealityStatus.DEBATING]: 0,
-          [RealityStatus.DEFUNCT]: 0,
-          [RealityStatus.REALIZED]: 0,
-        }
-      })
-      .select()
-      .single();
-
-    if (archiveError || !archiveData) {
-      throw new Error(`DB 저장 실패: ${archiveError?.message || "알 수 없는 오류"}`);
-    }
-
-    const { error: timelineError } = await getSupabaseClient()
-      .from("timelines")
-      .insert({
-        archive_id: archiveData.id,
-        source_venue: sourceVenue,
-        source_url: url,
-        title: parsedData.title,
-        summary: parsedData.summary,
-        reality_index: realityIndex,
-        status: parsedData.status,
-      });
-
-    if (timelineError) {
-      throw new Error(`타임라인 DB 저장 실패: ${timelineError.message}`);
-    }
-
-    const { error: logError } = await getSupabaseClient()
-      .from("notification_logs")
-      .insert({
-        archive_id: archiveData.id,
-        message: `🔍 첫 분석 완료! [${parsedData.newsCategory}] 소식이며, AI 팩트 지수 ${realityIndex}%로 추적을 시작해요.`,
-      });
-
-    if (logError) {
-      throw new Error(`알림 로그 DB 저장 실패: ${logError.message}`);
-    }
-
-    const { data: fullArchive, error: fetchError } = await getSupabaseClient()
-      .from("archives")
-      .select(`
-        *,
-        timelines (*),
-        notification_logs (*)
-      `)
-      .eq("id", archiveData.id)
-      .single();
-
-    if (fetchError || !fullArchive) {
-      throw new Error(`DB 조회 실패: ${fetchError?.message || "알 수 없는 오류"}`);
-    }
-
-    const dbArchive = fullArchive as DBArchive;
-    const dbTimelines = dbArchive.timelines || [];
-    const dbLogs = dbArchive.notification_logs || [];
-
-    const timelineItems: TimelineItem[] = dbTimelines.map((timelineItem) => ({
-      id: timelineItem.id,
-      recordedAt: timelineItem.recorded_at,
-      sourceVenue: timelineItem.source_venue,
-      sourceUrl: timelineItem.source_url,
-      title: timelineItem.title,
-      summary: timelineItem.summary,
-      realityIndex: timelineItem.reality_index,
-      status: timelineItem.status as RealityStatus,
-    }));
-
-    const notificationLogsList: NotificationLog[] = dbLogs.map((notificationLogItem) => ({
-      id: notificationLogItem.id,
-      recordedAt: notificationLogItem.recorded_at,
-      message: notificationLogItem.message,
-    }));
-
     return {
-      id: dbArchive.id,
-      referenceNumber: dbArchive.reference_number,
-      category: dbArchive.category as CategoryType,
-      newsCategory: dbArchive.news_category,
-      coreClaim: {
-        quote: dbArchive.core_claim_quote,
-        contextDescription: dbArchive.core_claim_context,
-      },
-      speaker: {
-        id: "speaker-" + dbArchive.id,
-        name: dbArchive.speaker_name,
-        position: dbArchive.speaker_position,
-        organization: dbArchive.speaker_organization,
-        imageUrl: "",
-      },
-      evidence: {
-        recordedAt: dbArchive.created_at,
-        sourceVenue,
-        sourceUrl: url,
-      },
-      realityMeter: {
-        currentIndex: dbArchive.reality_index,
-        status: dbArchive.status as RealityStatus,
-      },
-      observationStats: {
-        totalObservers: 1,
-        distribution: {
-          [RealityStatus.REALIZING]: dbArchive.status === "REALIZING" ? 1 : 0,
-          [RealityStatus.FADING]: dbArchive.status === "FADING" ? 1 : 0,
-          [RealityStatus.DEBATING]: dbArchive.status === "DEBATING" ? 1 : 0,
-          [RealityStatus.DEFUNCT]: dbArchive.status === "DEFUNCT" ? 1 : 0,
-          [RealityStatus.REALIZED]: dbArchive.status === "REALIZED" ? 1 : 0,
-        },
-      },
-      checkInterval: dbArchive.check_interval as CheckInterval,
-      expiryDate: dbArchive.expiry_date,
-      targetDates: dbArchive.target_dates || [],
-      timeline: timelineItems,
-      notificationLogs: notificationLogsList,
-      userVotes: dbArchive.user_votes as Record<RealityStatus, number>,
+      sourceUrl: trimmedUrl,
+      sourceVenue,
+      title: parsedData.title,
+      summary: parsedData.summary,
+      newsCategory: parsedData.newsCategory,
+      speakerName: parsedData.speakerName,
+      speakerPosition: parsedData.speakerPosition,
+      speakerOrganization: parsedData.speakerOrganization,
+      realityIndex: parsedData.scoreSourceReliability + parsedData.scoreFeasibility + parsedData.scoreEvidence,
+      status: parsedData.status as RealityStatus,
     };
   } catch (error: unknown) {
     console.error("뉴스 분석 실패:", error);
     throw new Error(error instanceof Error ? error.message : "뉴스 분석에 실패했습니다.");
   }
+}
+
+export async function createArchiveFromNewsPreview(
+  preview: NewsAnalysisPreview,
+  userAgenda: string,
+  checkInterval: CheckInterval = CheckInterval.WEEKLY,
+  expiryDate: string = "",
+  targetDates: string[] = [],
+  authorName: string = "나"
+): Promise<ArchiveReference> {
+  const trimmedAgenda = userAgenda.trim();
+  if (!trimmedAgenda) {
+    throw new Error("링크에 대한 내 의견 또는 아젠다를 입력해 주십시오.");
+  }
+
+  const title = preview.title.trim();
+  const summary = preview.summary.trim();
+  const sourceUrl = preview.sourceUrl.trim();
+  if (!title || !summary || !sourceUrl) {
+    throw new Error("기사 분석 결과가 올바르지 않습니다. 링크를 다시 분석해 주십시오.");
+  }
+
+  const allowedStatuses = Object.values(RealityStatus);
+  const status = allowedStatuses.includes(preview.status) ? preview.status : RealityStatus.DEBATING;
+  const realityIndex = Math.max(0, Math.min(100, Math.round(Number(preview.realityIndex) || 0)));
+  const referenceNumber = "SIG-" + Math.floor(Math.random() * 10000);
+  const defaultExpiryDate = expiryDate || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+  const { data: archiveData, error: archiveError } = await getSupabaseClient()
+    .from("archives")
+    .insert({
+      reference_number: referenceNumber,
+      category: CategoryType.ENTRY_QUOTE,
+      news_category: preview.newsCategory,
+      core_claim_quote: trimmedAgenda,
+      core_claim_context: preview.summary,
+      speaker_name: authorName.trim() || "나",
+      speaker_position: "작성자",
+      speaker_organization: "My HETJE",
+      reality_index: realityIndex,
+      status,
+      check_interval: checkInterval,
+      expiry_date: defaultExpiryDate,
+      target_dates: targetDates,
+      user_votes: {
+        [RealityStatus.REALIZING]: 0,
+        [RealityStatus.FADING]: 0,
+        [RealityStatus.DEBATING]: 0,
+        [RealityStatus.DEFUNCT]: 0,
+        [RealityStatus.REALIZED]: 0,
+      },
+    })
+    .select()
+    .single();
+
+  if (archiveError || !archiveData) {
+    throw new Error(`DB 저장 실패: ${archiveError?.message || "알 수 없는 오류"}`);
+  }
+
+  const { error: timelineError } = await getSupabaseClient()
+    .from("timelines")
+    .insert({
+      archive_id: archiveData.id,
+      source_venue: preview.sourceVenue,
+      source_url: sourceUrl,
+      title: preview.title,
+      summary: preview.summary,
+      reality_index: realityIndex,
+      status,
+    });
+
+  if (timelineError) {
+    throw new Error(`타임라인 DB 저장 실패: ${timelineError.message}`);
+  }
+
+  const { error: logError } = await getSupabaseClient()
+    .from("notification_logs")
+    .insert({
+      archive_id: archiveData.id,
+      message: `🔍 링크 분석을 마치고 내 아젠다를 등록했어요. [${preview.newsCategory}] AI 팩트 지수 ${realityIndex}%`,
+    });
+
+  if (logError) {
+    throw new Error(`알림 로그 DB 저장 실패: ${logError.message}`);
+  }
+
+  const { data: fullArchive, error: fetchError } = await getSupabaseClient()
+    .from("archives")
+    .select(`
+      *,
+      timelines (*),
+      notification_logs (*)
+    `)
+    .eq("id", archiveData.id)
+    .single();
+
+  if (fetchError || !fullArchive) {
+    throw new Error(`DB 조회 실패: ${fetchError?.message || "알 수 없는 오류"}`);
+  }
+
+  const dbArchive = fullArchive as DBArchive;
+  const timelineItems: TimelineItem[] = (dbArchive.timelines || []).map((timelineItem) => ({
+    id: timelineItem.id,
+    recordedAt: timelineItem.recorded_at,
+    sourceVenue: timelineItem.source_venue,
+    sourceUrl: timelineItem.source_url,
+    title: timelineItem.title,
+    summary: timelineItem.summary,
+    realityIndex: timelineItem.reality_index,
+    status: timelineItem.status as RealityStatus,
+  }));
+  const notificationLogsList: NotificationLog[] = (dbArchive.notification_logs || []).map((notificationLogItem) => ({
+    id: notificationLogItem.id,
+    recordedAt: notificationLogItem.recorded_at,
+    message: notificationLogItem.message,
+  }));
+
+  return {
+    id: dbArchive.id,
+    referenceNumber: dbArchive.reference_number,
+    category: dbArchive.category as CategoryType,
+    newsCategory: dbArchive.news_category,
+    coreClaim: {
+      quote: dbArchive.core_claim_quote,
+      contextDescription: dbArchive.core_claim_context,
+    },
+    speaker: {
+      id: "speaker-" + dbArchive.id,
+      name: dbArchive.speaker_name,
+      position: dbArchive.speaker_position,
+      organization: dbArchive.speaker_organization,
+      imageUrl: "",
+    },
+    evidence: {
+      recordedAt: dbArchive.created_at,
+      sourceVenue: preview.sourceVenue,
+      sourceUrl,
+    },
+    realityMeter: {
+      currentIndex: dbArchive.reality_index,
+      status: dbArchive.status as RealityStatus,
+    },
+    observationStats: {
+      totalObservers: 1,
+      distribution: {
+        [RealityStatus.REALIZING]: dbArchive.status === RealityStatus.REALIZING ? 1 : 0,
+        [RealityStatus.FADING]: dbArchive.status === RealityStatus.FADING ? 1 : 0,
+        [RealityStatus.DEBATING]: dbArchive.status === RealityStatus.DEBATING ? 1 : 0,
+        [RealityStatus.DEFUNCT]: dbArchive.status === RealityStatus.DEFUNCT ? 1 : 0,
+        [RealityStatus.REALIZED]: dbArchive.status === RealityStatus.REALIZED ? 1 : 0,
+      },
+    },
+    checkInterval: dbArchive.check_interval as CheckInterval,
+    expiryDate: dbArchive.expiry_date,
+    targetDates: dbArchive.target_dates || [],
+    timeline: timelineItems,
+    notificationLogs: notificationLogsList,
+    userVotes: dbArchive.user_votes as Record<RealityStatus, number>,
+  };
 }
 
 export async function createDirectArchive(

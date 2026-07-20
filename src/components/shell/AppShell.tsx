@@ -5,9 +5,10 @@ import { getSupabaseClient } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AppDataProvider, useAppData } from "@/lib/app-context";
-import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
+import { BottomNavigation } from "./BottomNavigation";
 import { RegisterModal } from "@/components/register/RegisterModal";
+import { getAuthErrorMessage, getSignUpOutcome } from "@/lib/auth-flow";
 
 function AuthModal() {
   const { authModalOpen, closeAuth } = useAppData();
@@ -15,6 +16,7 @@ function AuthModal() {
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
 
   if (!authModalOpen) return null;
@@ -22,21 +24,36 @@ function AuthModal() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
+    setNotice(null);
     try {
       setIsBusy(true);
       if (isSignUp) {
-        const { error } = await getSupabaseClient().auth.signUp({ email: authEmail, password: authPassword });
+        const { data, error } = await getSupabaseClient().auth.signUp({
+          email: authEmail.trim(),
+          password: authPassword,
+          options: { emailRedirectTo: window.location.origin },
+        });
         if (error) throw error;
-        alert("가입 성공! 로그인되었습니다.");
+        const outcome = getSignUpOutcome(data);
+        if (!outcome.authenticated) {
+          setNotice(outcome.message);
+          setIsSignUp(false);
+          setAuthPassword("");
+          return;
+        }
       } else {
-        const { error } = await getSupabaseClient().auth.signInWithPassword({ email: authEmail, password: authPassword });
+        const { error } = await getSupabaseClient().auth.signInWithPassword({
+          email: authEmail.trim(),
+          password: authPassword,
+        });
         if (error) throw error;
       }
       closeAuth();
       setAuthEmail("");
       setAuthPassword("");
+      setNotice(null);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "인증 처리 실패");
+      setError(getAuthErrorMessage(err));
     } finally {
       setIsBusy(false);
     }
@@ -44,9 +61,9 @@ function AuthModal() {
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-[16px]">
-      <div className="bg-card w-full max-w-[400px] rounded-[12px] border-[1px] border-border shadow-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div role="dialog" aria-modal="true" aria-labelledby="auth-title" className="bg-card w-full max-w-[400px] rounded-[12px] border-[1px] border-border shadow-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         <div className="p-[24px] border-b-[1px] border-border">
-          <h2 className="text-[18px] font-bold text-foreground">
+          <h2 id="auth-title" className="text-[18px] font-bold text-foreground">
             {isSignUp ? "헷제 서비스 회원가입" : "헷제 서비스 로그인"}
           </h2>
           <p className="text-[12px] text-muted-foreground mt-[2px]">
@@ -55,8 +72,13 @@ function AuthModal() {
         </div>
         <form onSubmit={handleSubmit} className="p-[24px] space-y-[16px]">
           {error && (
-            <div className="p-[10px] bg-red-50 text-red-600 rounded-[6px] border-[1px] border-red-200 text-[12px]">
+            <div role="alert" className="p-[10px] bg-red-50 text-red-600 rounded-[6px] border-[1px] border-red-200 text-[12px]">
               {error}
+            </div>
+          )}
+          {notice && (
+            <div role="status" className="p-[10px] bg-emerald-50 text-emerald-700 rounded-[6px] border-[1px] border-emerald-200 text-[12px] leading-relaxed">
+              {notice}
             </div>
           )}
           <div className="space-y-[6px]">
@@ -66,6 +88,7 @@ function AuthModal() {
               value={authEmail}
               onChange={(e) => setAuthEmail(e.target.value)}
               placeholder="name@company.com"
+              autoComplete="email"
               required
             />
           </div>
@@ -76,17 +99,23 @@ function AuthModal() {
               value={authPassword}
               onChange={(e) => setAuthPassword(e.target.value)}
               placeholder="••••••••"
+              autoComplete={isSignUp ? "new-password" : "current-password"}
+              minLength={6}
               required
             />
           </div>
           <div className="flex flex-col gap-[8px] pt-[8px]">
             <Button type="submit" disabled={isBusy} className="w-full bg-brand-600 hover:bg-brand-700 text-white rounded-[6px] h-[40px] text-[13px]">
-              {isSignUp ? "가입 및 로그인" : "로그인하기"}
+              {isBusy ? "처리 중..." : isSignUp ? "회원가입" : "로그인하기"}
             </Button>
             <Button
               type="button"
               variant="ghost"
-              onClick={() => setIsSignUp(!isSignUp)}
+              onClick={() => {
+                setIsSignUp(!isSignUp);
+                setError(null);
+                setNotice(null);
+              }}
               className="w-full text-[12px] text-brand-600 hover:text-brand-700"
             >
               {isSignUp ? "이미 계정이 있으신가요? 로그인" : "계정이 없으신가요? 회원가입"}
@@ -104,11 +133,11 @@ function AuthModal() {
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <AppDataProvider>
-      <div className="min-h-screen grid grid-cols-1 lg:grid-cols-[230px_1fr]">
-        <Sidebar />
-        <div className="min-w-0">
+      <div className="min-h-[100dvh] bg-[radial-gradient(circle_at_top,_#dbeafe_0,_#f8fafc_34%,_#eef2f7_100%)]">
+        <div className="relative mx-auto min-h-[100dvh] w-full max-w-[560px] overflow-x-hidden bg-background shadow-[0_0_60px_rgba(15,23,42,0.12)]">
           <Topbar />
-          <div className="max-w-[1400px] mx-auto">{children}</div>
+          <div className="pb-[calc(70px+env(safe-area-inset-bottom))]">{children}</div>
+          <BottomNavigation />
         </div>
       </div>
       <AuthModal />

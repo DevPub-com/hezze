@@ -2,24 +2,14 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Search, Plus } from "lucide-react";
+import { LogOut, Plus, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
 import { useAppData } from "@/lib/app-context";
-
-const MOBILE_NAV = [
-  { href: "/", label: "🔥 Board", match: (p: string) => p === "/" },
-  { href: "/my", label: "📚 My", match: (p: string) => p.startsWith("/my") },
-  { href: "/tomorrow", label: "📰 Tomorrow", match: (p: string) => p.startsWith("/tomorrow") },
-  { href: "/around", label: "⌁ Around", match: (p: string) => p.startsWith("/around") },
-  { href: "/leaderboard", label: "🏆 랭킹", match: (p: string) => p.startsWith("/leaderboard") },
-];
 
 export function Topbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, searchQuery, setSearchQuery, setIsCreating, openAuth, signOut } = useAppData();
+  const { user, setIsCreating, openAuth, signOut } = useAppData();
 
   const handleNewHetje = () => {
     setIsCreating(true);
@@ -29,65 +19,38 @@ export function Topbar() {
   };
 
   return (
-    <header className="sticky top-0 z-20 border-b-[1px] border-border bg-card/90 backdrop-blur-md">
-      <div className="flex items-center gap-[10px] px-[12px] sm:px-[18px] py-[12px]">
-        <div className="relative flex-1 max-w-[560px]">
-          <Search className="absolute left-[14px] top-[11px] w-[16px] h-[16px] text-muted-foreground" />
-          <Input
-            type="text"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="HETJE, 발제자, 주제 검색"
-            className="pl-[38px] h-[40px] rounded-[999px] text-[13px]"
-          />
-        </div>
-
-        <div className="ml-auto flex items-center gap-[8px] sm:gap-[12px]">
-          {user ? (
-            <div className="hidden sm:flex items-center gap-[12px]">
-              <span className="text-[12px] text-muted-foreground font-semibold">{user.email}</span>
-              <Button variant="ghost" size="sm" onClick={signOut} className="rounded-[6px] text-[13px] hover:bg-muted">
-                로그아웃
-              </Button>
-            </div>
-          ) : (
-            <Button variant="outline" size="sm" onClick={openAuth} className="rounded-[6px] text-[13px]">
-              로그인 / 가입
-            </Button>
-          )}
-          <Button
-            size="sm"
-            onClick={handleNewHetje}
-            className="rounded-[999px] text-[13px] bg-brand-600 hover:bg-brand-700"
-          >
-            <Plus className="w-[16px] h-[16px] mr-[4px]" />
-            새 HETJE
-          </Button>
-          <div className="hidden sm:grid w-[38px] h-[38px] rounded-full bg-gradient-to-br from-brand-400 to-brand-700 place-items-center text-white font-black text-[13px]">
-            {user?.email?.charAt(0).toUpperCase() ?? "JY"}
+    <header className="sticky top-0 z-30 border-b border-border/70 bg-card/92 px-[16px] pt-[calc(10px+env(safe-area-inset-top))] pb-[10px] backdrop-blur-xl">
+      <div className="flex items-center gap-[10px]">
+        <Link href="/" aria-label="헷제 메인으로 이동" className="flex min-w-0 items-center rounded-[8px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
+          <div className="min-w-0 leading-none">
+            <b className="block text-[18px] tracking-[-0.04em] text-foreground">헷제</b>
+            <span className="mt-[4px] block truncate text-[9px] font-semibold tracking-[0.05em] text-muted-foreground">
+              HUMAN THOUGHT ARCHIVE
+            </span>
           </div>
+        </Link>
+
+        <div className="ml-auto flex items-center gap-[7px]">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={user ? signOut : openAuth}
+            aria-label={user ? "로그아웃" : "로그인 또는 가입"}
+            className="h-[38px] w-[38px] rounded-full border border-border bg-background"
+          >
+            {user ? <LogOut className="h-[17px] w-[17px]" /> : <UserRound className="h-[17px] w-[17px]" />}
+          </Button>
+          <Button
+            size="icon"
+            onClick={handleNewHetje}
+            aria-label="새 HETJE 만들기"
+            className="h-[38px] w-[38px] rounded-full bg-brand-600 shadow-[0_8px_18px_rgba(37,99,235,0.25)] hover:bg-brand-700"
+          >
+            <Plus className="h-[19px] w-[19px]" />
+          </Button>
         </div>
       </div>
 
-      <nav className="lg:hidden flex gap-[6px] overflow-x-auto px-[12px] pb-[10px]">
-        {MOBILE_NAV.map((item) => {
-          const active = item.match(pathname);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "whitespace-nowrap rounded-[999px] px-[12px] py-[6px] text-[12px] font-bold transition-colors border-[1px]",
-                active
-                  ? "bg-brand-50 text-brand-600 border-brand-100"
-                  : "bg-muted/40 text-muted-foreground border-border"
-              )}
-            >
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
     </header>
   );
 }

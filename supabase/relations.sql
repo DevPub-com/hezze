@@ -14,13 +14,38 @@ create table if not exists public.relations (
 create index if not exists relations_source_idx on public.relations (source_archive_id);
 create index if not exists relations_target_idx on public.relations (target_archive_id);
 
--- 앱은 anon 키로 접속합니다(기존 votes/bookmarks 테이블과 동일 방식).
--- 더 엄격한 보안이 필요하면 auth.uid() 기반 정책으로 교체하세요.
+-- 관계 조회는 공개하고, 변경은 로그인한 사용자만 허용합니다.
 alter table public.relations enable row level security;
 
 drop policy if exists "relations_all_access" on public.relations;
-create policy "relations_all_access"
+drop policy if exists "relations_read_access" on public.relations;
+drop policy if exists "relations_authenticated_insert" on public.relations;
+drop policy if exists "relations_authenticated_update" on public.relations;
+drop policy if exists "relations_authenticated_delete" on public.relations;
+
+create policy "relations_read_access"
   on public.relations
-  for all
+  for select
+  using (true);
+
+create policy "relations_authenticated_insert"
+  on public.relations
+  for insert
+  to authenticated
+  with check (true);
+
+create policy "relations_authenticated_update"
+  on public.relations
+  for update
+  to authenticated
   using (true)
   with check (true);
+
+create policy "relations_authenticated_delete"
+  on public.relations
+  for delete
+  to authenticated
+  using (true);
+
+grant select on public.relations to anon, authenticated;
+grant insert, update, delete on public.relations to authenticated;

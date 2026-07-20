@@ -18,7 +18,7 @@ const COLUMN_TONE: Record<RelationType, string> = {
 };
 
 export default function AroundPage() {
-  const { archiveList } = useAppData();
+  const { archiveList, user, openAuth } = useAppData();
 
   const [focusId, setFocusId] = useState<string | null>(null);
   const [relations, setRelations] = useState<ClaimRelation[]>([]);
@@ -71,6 +71,10 @@ export default function AroundPage() {
 
   const handleConnect = async () => {
     if (!effectiveFocusId || !targetId) return;
+    if (!user) {
+      openAuth();
+      return;
+    }
     try {
       setIsSaving(true);
       setError(null);
@@ -86,6 +90,10 @@ export default function AroundPage() {
 
   const handleDisconnect = async (relationId: string) => {
     if (!effectiveFocusId) return;
+    if (!user) {
+      openAuth();
+      return;
+    }
     try {
       setError(null);
       await deleteRelation(relationId);
@@ -100,31 +108,22 @@ export default function AroundPage() {
   );
 
   return (
-    <section className="px-[16px] sm:px-[24px] py-[24px] max-w-[1180px] mx-auto">
-      <div className="mb-[18px]">
-        <h1 className="text-[clamp(28px,5vw,52px)] leading-[1.0] tracking-[-0.05em] font-black text-foreground">
-          이 HETJE 주변<br />
-          <em className="not-italic text-brand-600">생각의 지형.</em>
-        </h1>
-        <p className="text-muted-foreground text-[13px] leading-relaxed mt-[10px]">
-          같은 방향·반대 방향·파생 아젠다를 봅니다.
-        </p>
-      </div>
-
+    <section className="mx-auto max-w-[560px] px-[16px] py-[16px]">
       {error && (
-        <div className="mb-[14px] p-[12px] bg-red-50 text-red-600 rounded-[8px] border-[1px] border-red-200 text-[12px]">
+        <div role="alert" className="mb-[10px] rounded-[12px] border border-red-200 bg-red-50 px-[12px] py-[10px] text-[11px] leading-relaxed text-red-600">
           {error}
         </div>
       )}
 
       {focus ? (
         <>
-          <div className="border-[1px] border-brand-100 bg-brand-50/40 rounded-[21px] p-[18px] mb-[14px]">
-            <label className="text-[11px] font-bold text-brand-600 block mb-[8px]">기준 HETJE</label>
+          <div className="mb-[10px] rounded-[16px] border border-brand-100 bg-brand-50/40 p-[14px]">
+            <label htmlFor="focus-archive" className="mb-[7px] block text-[11px] font-bold text-brand-600">기준 HETJE</label>
             <select
+              id="focus-archive"
               value={effectiveFocusId ?? ""}
               onChange={(e) => setFocusId(e.target.value)}
-              className="w-full border-[1px] border-input rounded-[10px] px-[12px] py-[10px] bg-background text-[14px] font-semibold focus:outline-none focus:ring-[2px] focus:ring-ring"
+              className="h-[42px] w-full truncate rounded-[10px] border border-input bg-background px-[11px] text-[13px] font-semibold focus:outline-none focus:ring-2 focus:ring-ring"
             >
               {archiveList.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -134,16 +133,18 @@ export default function AroundPage() {
             </select>
           </div>
 
-          <div className="border-[1px] border-border bg-card rounded-[16px] p-[14px] mb-[16px]">
-            <div className="flex items-center gap-[6px] text-foreground mb-[10px]">
+          <div className="mb-[12px] rounded-[16px] border border-border bg-card p-[14px]">
+            <div className="mb-[9px] flex items-center gap-[6px] text-foreground">
               <Plus className="w-[14px] h-[14px] text-brand-600" />
               <b className="text-[13px]">다른 HETJE와 연결</b>
             </div>
-            <div className="flex flex-col sm:flex-row gap-[8px]">
+            <div className="flex flex-col gap-[7px]">
+              <label htmlFor="target-archive" className="sr-only">연결할 HETJE</label>
               <select
+                id="target-archive"
                 value={targetId}
                 onChange={(e) => setTargetId(e.target.value)}
-                className="flex-1 border-[1px] border-input rounded-[10px] px-[12px] h-[40px] bg-background text-[13px] focus:outline-none focus:ring-[2px] focus:ring-ring"
+                className="h-[40px] w-full truncate rounded-[10px] border border-input bg-background px-[11px] text-[12px] focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 <option value="">연결할 HETJE 선택...</option>
                 {connectableArchives.map((a) => (
@@ -152,10 +153,12 @@ export default function AroundPage() {
                   </option>
                 ))}
               </select>
+              <label htmlFor="relation-type" className="sr-only">관계 방향</label>
               <select
+                id="relation-type"
                 value={relationType}
                 onChange={(e) => setRelationType(e.target.value as RelationType)}
-                className="sm:w-[160px] border-[1px] border-input rounded-[10px] px-[12px] h-[40px] bg-background text-[13px] focus:outline-none focus:ring-[2px] focus:ring-ring"
+                className="h-[40px] w-full rounded-[10px] border border-input bg-background px-[11px] text-[12px] focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 {COLUMN_ORDER.map((type) => (
                   <option key={type} value={type}>
@@ -166,7 +169,7 @@ export default function AroundPage() {
               <Button
                 onClick={handleConnect}
                 disabled={isSaving || !targetId}
-                className="h-[40px] rounded-[10px] text-[13px] bg-brand-600 hover:bg-brand-700"
+                className="h-[40px] rounded-[10px] bg-brand-600 text-[12px] font-bold hover:bg-brand-700"
               >
                 {isSaving ? <Loader2 className="w-[14px] h-[14px] animate-spin" /> : "연결"}
               </Button>
@@ -178,17 +181,17 @@ export default function AroundPage() {
               <Loader2 className="w-[18px] h-[18px] animate-spin inline-block" />
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-[12px]">
+            <div className="grid grid-cols-1 gap-[9px]">
               {COLUMN_ORDER.map((type) => {
                 const items = grouped(type);
                 return (
-                  <div key={type} className="border-[1px] border-border bg-card rounded-[21px] p-[16px]">
-                    <h3 className={cn("text-[14px] font-bold mb-[10px]", COLUMN_TONE[type])}>
+                  <div key={type} className="rounded-[16px] border border-border bg-card p-[14px]">
+                    <h3 className={cn("mb-[7px] text-[13px] font-bold", COLUMN_TONE[type])}>
                       {RELATION_TYPE_LABEL[type]} {items.length}
                     </h3>
                     {items.length > 0 ? (
                       items.map(({ rel, archive }) => (
-                        <div key={rel.id} className="py-[11px] border-b-[1px] border-border/60 last:border-0">
+                        <div key={rel.id} className="border-b border-border/60 py-[9px] last:border-0">
                           <div className="flex items-start justify-between gap-[8px]">
                             <b className="block text-[13px] text-foreground line-clamp-2 leading-snug">
                               {archive.coreClaim.quote}
@@ -208,7 +211,7 @@ export default function AroundPage() {
                         </div>
                       ))
                     ) : (
-                      <p className="text-[11px] text-muted-foreground/70 italic">
+                      <p className="text-[11px] text-muted-foreground/70 italic leading-relaxed">
                         아직 연결된 HETJE가 없습니다.
                       </p>
                     )}

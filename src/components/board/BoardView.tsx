@@ -189,9 +189,9 @@ export function BoardView() {
   const selectedArchive = archiveList.find((archive) => archive.id === activeArchiveId);
 
   return (
-    <main className="bg-background font-sans">
-        <div className="flex flex-col lg:flex-row h-[calc(100vh-150px)] lg:h-[calc(100vh-73px)] overflow-hidden">
-          <aside className={cn("w-full lg:w-[380px] shrink-0 border-r-[1px] border-border bg-card flex flex-col h-full", mobileView === "list" ? "flex" : "hidden lg:flex")}>
+    <main className="bg-background">
+        <div className="flex h-[calc(100dvh-177px-env(safe-area-inset-top)-env(safe-area-inset-bottom))] min-h-[420px] flex-col overflow-hidden">
+          <aside className={cn("h-full w-full shrink-0 bg-card flex-col", mobileView === "list" ? "flex" : "hidden")}>
           <div className="p-[16px] border-b-[1px] border-border space-y-[12px]">
             <div className="relative">
               <Search className="absolute left-[12px] top-[10px] w-[16px] h-[16px] text-muted-foreground" />
@@ -300,8 +300,8 @@ export function BoardView() {
           </div>
         </aside>
 
-        <section className={cn("flex-1 overflow-y-auto bg-muted/20 h-full", mobileView === "detail" ? "block" : "hidden lg:block")}>
-          <div className="lg:hidden px-[24px] pt-[24px] pb-0">
+        <section className={cn("h-full flex-1 overflow-y-auto bg-muted/20", mobileView === "detail" ? "block" : "hidden")}>
+          <div className="sticky top-0 z-10 border-b border-border/60 bg-background/92 px-[16px] backdrop-blur-lg">
             <Button
               variant="ghost"
               onClick={() => setMobileView("list")}
@@ -319,9 +319,9 @@ export function BoardView() {
           )}
 
           {selectedArchive ? (
-            <div className="max-w-[1000px] mx-auto p-[16px] sm:p-[24px] space-y-[16px] sm:space-y-[24px]">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-[16px] sm:gap-[24px]">
-                <div className="lg:col-span-2 space-y-[16px] sm:space-y-[24px]">
+            <div className="mx-auto max-w-[560px] space-y-[16px] p-[14px]">
+              <div className="grid grid-cols-1 gap-[16px]">
+                <div className="space-y-[16px]">
                   <Card className="overflow-hidden border-border/50 shadow-sm hover:shadow-md transition-shadow duration-300 rounded-[12px]">
                     <CardHeader className="bg-muted/30 border-b-[1px] border-border/50 pb-[12px] flex flex-row items-center justify-between">
                       <div className="flex items-center gap-[8px] text-brand-600">

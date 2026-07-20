@@ -1,5 +1,3 @@
-"use server";
-
 import { getSupabaseClient } from "@/lib/supabase";
 import { ClaimRelation, RelationType } from "../model/archive.model";
 
@@ -7,6 +5,25 @@ interface DBRelation {
   id: string;
   target_archive_id: string;
   relation_type: string;
+}
+
+async function getAuthenticatedClient() {
+  const client = getSupabaseClient();
+  const { data: { session }, error } = await client.auth.getSession();
+
+  if (error || !session) {
+    throw new Error("HETJE를 연결하려면 먼저 로그인해 주세요.");
+  }
+
+  return client;
+}
+
+function relationMutationError(action: "저장" | "삭제", message?: string) {
+  if (message?.toLowerCase().includes("row-level security")) {
+    return new Error(`관계 ${action} 권한을 확인할 수 없습니다. 다시 로그인해 주세요.`);
+  }
+
+  return new Error(`관계 ${action} 실패: ${message || "알 수 없는 오류"}`);
 }
 
 export async function fetchRelationsForArchive(archiveId: string): Promise<ClaimRelation[]> {
@@ -35,7 +52,8 @@ export async function createRelation(
     throw new Error("같은 HETJE끼리는 연결할 수 없습니다.");
   }
 
-  const { data, error } = await getSupabaseClient()
+  const client = await getAuthenticatedClient();
+  const { data, error } = await client
     .from("relations")
     .upsert(
       {
@@ -49,7 +67,7 @@ export async function createRelation(
     .single();
 
   if (error || !data) {
-    throw new Error(`관계 저장 실패: ${error?.message || "알 수 없는 오류"}`);
+    throw relationMutationError("저장", error?.message);
   }
 
   const row = data as DBRelation;
@@ -61,12 +79,13 @@ export async function createRelation(
 }
 
 export async function deleteRelation(relationId: string): Promise<void> {
-  const { error } = await getSupabaseClient()
+  const client = await getAuthenticatedClient();
+  const { error } = await client
     .from("relations")
     .delete()
     .eq("id", relationId);
 
   if (error) {
-    throw new Error(`관계 삭제 실패: ${error.message}`);
+    throw relationMutationError("삭제", error.message);
   }
 }
