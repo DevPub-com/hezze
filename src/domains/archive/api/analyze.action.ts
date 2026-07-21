@@ -150,6 +150,10 @@ interface CaptionTrack {
 }
 
 interface PlayerResponse {
+  playabilityStatus?: {
+    status?: string;
+    reason?: string;
+  };
   captions?: {
     playerCaptionsTracklistRenderer?: {
       captionTracks?: CaptionTrack[];
@@ -160,6 +164,11 @@ interface PlayerResponse {
     shortDescription?: string;
     author?: string;
   };
+}
+
+interface YoutubeOEmbedResponse {
+  title?: string;
+  author_name?: string;
 }
 
 function extractJsonByBrace(source: string, marker: string): string | null {
@@ -217,26 +226,86 @@ const YOUTUBE_HEADERS = {
   Cookie: "CONSENT=YES+cb.20210328-17-p0.en+FX+000",
 };
 
+const YOUTUBE_MOBILE_HEADERS = {
+  ...YOUTUBE_HEADERS,
+  "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+};
+
 async function fetchYoutubeHtml(youtubeVideoId: string): Promise<string> {
-  const url = `https://www.youtube.com/watch?v=${youtubeVideoId}&bpctr=9999999999&has_verified=1&hl=ko`;
+  const requestCandidates = [
+    {
+      url: `https://www.youtube.com/watch?v=${youtubeVideoId}&bpctr=9999999999&has_verified=1&hl=ko`,
+      headers: YOUTUBE_HEADERS,
+    },
+    {
+      url: `https://m.youtube.com/watch?v=${youtubeVideoId}&hl=ko`,
+      headers: YOUTUBE_MOBILE_HEADERS,
+    },
+  ];
   let lastError = "알 수 없는 오류";
   for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const response = await fetch(url, { headers: YOUTUBE_HEADERS });
-      if (!response.ok) {
-        lastError = `HTTP ${response.status}`;
-        continue;
+    for (const candidate of requestCandidates) {
+      try {
+        const response = await fetch(candidate.url, {
+          headers: candidate.headers,
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          lastError = `HTTP ${response.status}`;
+          continue;
+        }
+        const html = await response.text();
+        const playerResponse = parsePlayerResponse(html);
+        if (playerResponse?.playabilityStatus?.status === "OK") {
+          return html;
+        }
+        lastError =
+          playerResponse?.playabilityStatus?.reason ||
+          playerResponse?.playabilityStatus?.status ||
+          "플레이어 정보를 찾을 수 없음(봇 차단/동의 페이지 가능성).";
+      } catch (error: unknown) {
+        lastError = error instanceof Error ? error.message : "요청 실패";
       }
-      const html = await response.text();
-      if (html.includes("ytInitialPlayerResponse")) {
-        return html;
-      }
-      lastError = "플레이어 정보를 찾을 수 없음(봇 차단/동의 페이지 가능성).";
-    } catch (error: unknown) {
-      lastError = error instanceof Error ? error.message : "요청 실패";
     }
   }
   throw new Error(`유튜브 페이지를 가져올 수 없습니다. (${lastError})`);
+}
+
+async function fetchYoutubeOEmbed(youtubeVideoId: string): Promise<{ title: string; author: string }> {
+  try {
+    const videoUrl = `https://www.youtube.com/watch?v=${youtubeVideoId}`;
+    const response = await fetch(
+      `https://www.youtube.com/oembed?url=${encodeURIComponent(videoUrl)}&format=json`,
+      { headers: YOUTUBE_HEADERS, cache: "no-store" }
+    );
+    if (!response.ok) return { title: "", author: "" };
+    const data = (await response.json()) as YoutubeOEmbedResponse;
+    return {
+      title: data.title?.trim() || "",
+      author: data.author_name?.trim() || "",
+    };
+  } catch {
+    return { title: "", author: "" };
+  }
+}
+
+async function createYoutubeMetadataFallback(
+  youtubeVideoId: string,
+  pageTitle = "",
+  pageAuthor = "",
+  description = ""
+): Promise<{ title: string; textContent: string; author: string } | null> {
+  const oEmbed = await fetchYoutubeOEmbed(youtubeVideoId);
+  const title = pageTitle || oEmbed.title;
+  const author = pageAuthor || oEmbed.author;
+  const metadataText = [title, author, description].filter(Boolean).join("\n").trim();
+  if (!metadataText) return null;
+
+  return {
+    title,
+    author,
+    textContent: `${metadataText}\n\n자막을 불러오지 못해 제목과 채널 정보만 분석합니다.`,
+  };
 }
 
 async function fetchCaptionText(baseUrl: string): Promise<string> {
@@ -273,7 +342,14 @@ async function fetchCaptionText(baseUrl: string): Promise<string> {
 }
 
 async function fetchYoutubeTranscript(youtubeVideoId: string): Promise<{ title: string; textContent: string; author: string }> {
-  const html = await fetchYoutubeHtml(youtubeVideoId);
+  let html = "";
+  try {
+    html = await fetchYoutubeHtml(youtubeVideoId);
+  } catch (error: unknown) {
+    const fallback = await createYoutubeMetadataFallback(youtubeVideoId);
+    if (fallback) return fallback;
+    throw error;
+  }
   const $ = cheerio.load(html);
   const playerResponse = parsePlayerResponse(html);
 
@@ -286,11 +362,11 @@ async function fetchYoutubeTranscript(youtubeVideoId: string): Promise<{ title: 
   const captionTracks = playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
   if (!captionTracks || captionTracks.length === 0) {
     const description = playerResponse?.videoDetails?.shortDescription || "";
-    const fallbackText = `${title}\n${author}\n${description}`.trim();
-    if (!fallbackText) {
+    const fallback = await createYoutubeMetadataFallback(youtubeVideoId, title, author, description);
+    if (!fallback) {
       throw new Error("자막 정보가 존재하지 않는 동영상입니다.");
     }
-    return { title, textContent: fallbackText, author };
+    return fallback;
   }
 
   const selectedTrack =
@@ -302,11 +378,11 @@ async function fetchYoutubeTranscript(youtubeVideoId: string): Promise<{ title: 
 
   if (!textContent) {
     const description = playerResponse?.videoDetails?.shortDescription || "";
-    const fallbackText = `${title}\n${author}\n${description}`.trim();
-    if (!fallbackText) {
+    const fallback = await createYoutubeMetadataFallback(youtubeVideoId, title, author, description);
+    if (!fallback) {
       throw new Error("자막 텍스트가 비어 있습니다.");
     }
-    return { title, textContent: fallbackText, author };
+    return fallback;
   }
 
   return { title, textContent, author };
