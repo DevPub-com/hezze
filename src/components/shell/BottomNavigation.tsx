@@ -2,14 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Home, Orbit, Trophy, Waypoints } from "lucide-react";
+import { BookOpen, Home, Trophy, Waypoints } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/", label: "보드", icon: Home, match: (path: string) => path === "/" },
   { href: "/my", label: "내 헷제", icon: BookOpen, match: (path: string) => path.startsWith("/my") },
   { href: "/tomorrow", label: "투모로우", icon: Waypoints, match: (path: string) => path.startsWith("/tomorrow") },
-  { href: "/around", label: "어라운드", icon: Orbit, match: (path: string) => path.startsWith("/around") },
   { href: "/leaderboard", label: "랭킹", icon: Trophy, match: (path: string) => path.startsWith("/leaderboard") },
 ];
 
@@ -19,7 +18,7 @@ export function BottomNavigation() {
   return (
     <nav
       aria-label="주요 내비게이션"
-      className="fixed inset-x-0 bottom-0 z-40 mx-auto grid w-full max-w-[560px] grid-cols-5 border-t border-border/80 bg-card/95 px-[6px] pt-[7px] pb-[calc(7px+env(safe-area-inset-bottom))] shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl"
+      className="fixed inset-x-0 bottom-0 z-40 mx-auto grid w-full max-w-[560px] grid-cols-4 border-t border-border/80 bg-card/95 px-[6px] pt-[7px] pb-[calc(7px+env(safe-area-inset-bottom))] shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl"
     >
       {NAV_ITEMS.map((item) => {
         const active = item.match(pathname);

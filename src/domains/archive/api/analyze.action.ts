@@ -5,6 +5,7 @@ import OpenAI from "openai";
 import { GoogleGenAI, Type } from "@google/genai";
 import { getSupabaseClient } from "@/lib/supabase";
 import { ArchiveReference, CategoryType, RealityStatus, CheckInterval, TimelineItem, NotificationLog, RealizationTrajectory, SpeakerRankItem, UserRankItem } from "../model/archive.model";
+import { extractYoutubeVideoId } from "../lib/youtube-url.mjs";
 
 if (process.env.NODE_ENV === "development") {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
@@ -73,22 +74,30 @@ export async function fetchArchivesList(): Promise<ArchiveReference[]> {
   const dbArchives = (data || []) as DBArchive[];
 
   return dbArchives.map((archive) => {
-    const timelineItems: TimelineItem[] = (archive.timelines || []).map((timelineItem) => ({
-      id: timelineItem.id,
-      recordedAt: timelineItem.recorded_at,
-      sourceVenue: timelineItem.source_venue,
-      sourceUrl: timelineItem.source_url,
-      title: timelineItem.title,
-      summary: timelineItem.summary,
-      realityIndex: timelineItem.reality_index,
-      status: timelineItem.status as RealityStatus,
-    }));
+    const timelineItems: TimelineItem[] = (archive.timelines || [])
+      .map((timelineItem) => ({
+        id: timelineItem.id,
+        recordedAt: timelineItem.recorded_at,
+        sourceVenue: timelineItem.source_venue,
+        sourceUrl: timelineItem.source_url,
+        title: timelineItem.title,
+        summary: timelineItem.summary,
+        realityIndex: timelineItem.reality_index,
+        status: timelineItem.status as RealityStatus,
+      }))
+      .sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
 
     const notificationLogsList: NotificationLog[] = (archive.notification_logs || []).map((notificationLogItem) => ({
       id: notificationLogItem.id,
       recordedAt: notificationLogItem.recorded_at,
       message: notificationLogItem.message,
     }));
+    const originalTimelineSource = timelineItems[0]?.sourceVenue || "";
+    const sourceVenue =
+      archive.speaker_organization !== "My HETJE" &&
+      (originalTimelineSource === "YouTube" || originalTimelineSource.includes("."))
+        ? archive.speaker_organization
+        : originalTimelineSource || archive.speaker_organization || "출처 미상";
 
     return {
       id: archive.id,
@@ -108,7 +117,7 @@ export async function fetchArchivesList(): Promise<ArchiveReference[]> {
       },
       evidence: {
         recordedAt: archive.created_at,
-        sourceVenue: archive.speaker_organization,
+        sourceVenue,
         sourceUrl: timelineItems[0]?.sourceUrl || "",
       },
       realityMeter: {
@@ -263,7 +272,7 @@ async function fetchCaptionText(baseUrl: string): Promise<string> {
   }
 }
 
-async function fetchYoutubeTranscript(youtubeVideoId: string): Promise<{ title: string; textContent: string }> {
+async function fetchYoutubeTranscript(youtubeVideoId: string): Promise<{ title: string; textContent: string; author: string }> {
   const html = await fetchYoutubeHtml(youtubeVideoId);
   const $ = cheerio.load(html);
   const playerResponse = parsePlayerResponse(html);
@@ -272,16 +281,16 @@ async function fetchYoutubeTranscript(youtubeVideoId: string): Promise<{ title: 
   if (!title && playerResponse?.videoDetails?.title) {
     title = playerResponse.videoDetails.title;
   }
+  const author = playerResponse?.videoDetails?.author?.trim() || "";
 
   const captionTracks = playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
   if (!captionTracks || captionTracks.length === 0) {
     const description = playerResponse?.videoDetails?.shortDescription || "";
-    const author = playerResponse?.videoDetails?.author || "";
     const fallbackText = `${title}\n${author}\n${description}`.trim();
     if (!fallbackText) {
       throw new Error("자막 정보가 존재하지 않는 동영상입니다.");
     }
-    return { title, textContent: fallbackText };
+    return { title, textContent: fallbackText, author };
   }
 
   const selectedTrack =
@@ -293,15 +302,14 @@ async function fetchYoutubeTranscript(youtubeVideoId: string): Promise<{ title: 
 
   if (!textContent) {
     const description = playerResponse?.videoDetails?.shortDescription || "";
-    const author = playerResponse?.videoDetails?.author || "";
     const fallbackText = `${title}\n${author}\n${description}`.trim();
     if (!fallbackText) {
       throw new Error("자막 텍스트가 비어 있습니다.");
     }
-    return { title, textContent: fallbackText };
+    return { title, textContent: fallbackText, author };
   }
 
-  return { title, textContent };
+  return { title, textContent, author };
 }
 
 export interface NewsAnalysisPreview {
@@ -317,7 +325,7 @@ export interface NewsAnalysisPreview {
   status: RealityStatus;
 }
 
-export async function analyzeNewsUrlPreview(url: string): Promise<NewsAnalysisPreview> {
+async function analyzeNewsUrlPreviewInternal(url: string): Promise<NewsAnalysisPreview> {
   const trimmedUrl = url.trim();
   if (!trimmedUrl) {
     throw new Error("분석할 기사 또는 YouTube 링크를 입력해 주십시오.");
@@ -337,15 +345,14 @@ export async function analyzeNewsUrlPreview(url: string): Promise<NewsAnalysisPr
     let sourceVenue = "알 수 없음";
 
     if (isYoutube) {
-      const videoIdMatch = trimmedUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/ ]{11})/i);
-      const youtubeVideoId = videoIdMatch ? videoIdMatch[1] : null;
+      const youtubeVideoId = extractYoutubeVideoId(trimmedUrl);
       if (!youtubeVideoId) {
         throw new Error("유효한 유튜브 동영상 식별자를 찾을 수 없습니다.");
       }
       const transcriptData = await fetchYoutubeTranscript(youtubeVideoId);
       title = transcriptData.title;
       textContent = transcriptData.textContent;
-      sourceVenue = "YouTube";
+      sourceVenue = transcriptData.author || "YouTube";
     } else {
       const response = await fetch(trimmedUrl, {
         headers: {
@@ -375,7 +382,8 @@ export async function analyzeNewsUrlPreview(url: string): Promise<NewsAnalysisPr
 
       title = $("title").text() || "제목 없음";
       try {
-        sourceVenue = new URL(trimmedUrl).hostname.replace("www.", "");
+        const siteName = $('meta[property="og:site_name"]').attr("content")?.trim();
+        sourceVenue = siteName || new URL(trimmedUrl).hostname.replace("www.", "");
       } catch {
       }
     }
@@ -548,13 +556,26 @@ ${textContent}
   }
 }
 
+export interface NewsAnalysisResult {
+  preview: NewsAnalysisPreview | null;
+  error: string | null;
+}
+
+export async function analyzeNewsUrlPreview(url: string): Promise<NewsAnalysisResult> {
+  try {
+    return { preview: await analyzeNewsUrlPreviewInternal(url), error: null };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "뉴스 분석에 실패했습니다.";
+    return { preview: null, error: message };
+  }
+}
+
 export async function createArchiveFromNewsPreview(
   preview: NewsAnalysisPreview,
   userAgenda: string,
   checkInterval: CheckInterval = CheckInterval.WEEKLY,
   expiryDate: string = "",
-  targetDates: string[] = [],
-  authorName: string = "나"
+  targetDates: string[] = []
 ): Promise<ArchiveReference> {
   const trimmedAgenda = userAgenda.trim();
   if (!trimmedAgenda) {
@@ -582,9 +603,9 @@ export async function createArchiveFromNewsPreview(
       news_category: preview.newsCategory,
       core_claim_quote: trimmedAgenda,
       core_claim_context: preview.summary,
-      speaker_name: authorName.trim() || "나",
-      speaker_position: "작성자",
-      speaker_organization: "My HETJE",
+      speaker_name: preview.speakerName.trim() || "보도진",
+      speaker_position: preview.speakerPosition.trim() || "기자",
+      speaker_organization: preview.speakerOrganization.trim() || preview.sourceVenue,
       reality_index: realityIndex,
       status,
       check_interval: checkInterval,

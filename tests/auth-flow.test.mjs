@@ -95,6 +95,6 @@ test("the text logo links home and the decorative H icon is removed", async () =
   const topbar = await readFile("src/components/shell/Topbar.tsx", "utf8");
 
   assert.match(topbar, /import Link from "next\/link"/);
-  assert.match(topbar, /<Link href="\/" aria-label="헷제 메인으로 이동"/);
+  assert.match(topbar, /<Link[\s\S]*?href="\/"[\s\S]*?aria-label="헷제 메인으로 이동"/);
   assert.doesNotMatch(topbar, />\s*H\s*<\/div>/);
 });

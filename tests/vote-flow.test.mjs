@@ -26,6 +26,27 @@ test("the browser does not overwrite the database-maintained vote aggregate", as
   assert.doesNotMatch(source, /\.from\("archives"\)/);
 });
 
+test("vote summaries are loaded from the authenticated votes table", async () => {
+  const voteApi = await readFile("src/domains/archive/api/vote.action.ts", "utf8").catch(() => "");
+  const board = await readFile("src/components/board/BoardView.tsx", "utf8");
+
+  assert.match(voteApi, /export async function fetchVoteSummary\(archiveId: string\)/);
+  assert.match(voteApi, /\.from\("votes"\)\s*\.select\("status"\)\s*\.eq\("archive_id", archiveId\)/);
+  assert.match(voteApi, /return fetchVoteSummaryWithClient\(client, archiveId\)/);
+  assert.match(board, /Promise\.all\(\[\s*fetchUserVote\(activeArchiveId\),\s*fetchVoteSummary\(activeArchiveId\)/);
+  assert.match(board, /userVotes: voteSummary/);
+});
+
+test("vote summary values update without reordering the status rows", async () => {
+  const board = await readFile("src/components/board/BoardView.tsx", "utf8");
+
+  assert.doesNotMatch(board, /\.sort\(\(a, b\) => b\[1\] - a\[1\]\)/);
+  assert.match(
+    board,
+    /\(Object\.keys\(REALITY_STATUS_LABEL\) as RealityStatus\[\]\)[\s\S]*?\.map\(\(status\) => \{[\s\S]*?const count = selectedArchive\.userVotes\?\.\[status\] \|\| 0;/
+  );
+});
+
 test("vote mutations use the signed-in browser session instead of a server action", async () => {
   const voteApi = await readFile("src/domains/archive/api/vote.action.ts", "utf8").catch(() => "");
   const analyzeApi = await readFile("src/domains/archive/api/analyze.action.ts", "utf8");
@@ -35,11 +56,13 @@ test("vote mutations use the signed-in browser session instead of a server actio
   assert.doesNotMatch(voteApi, /^"use server";/);
   assert.match(voteApi, /auth\.getSession\(\)/);
   assert.match(voteApi, /session\.user\.id/);
-  assert.match(voteApi, /export async function updateVote\(\s*archiveId: string,\s*status: RealityStatus,\s*currentVotes:/);
+  assert.match(voteApi, /export async function updateVote\(\s*archiveId: string,\s*status: RealityStatus\s*\)/);
   assert.match(voteApi, /export async function fetchUserVote\(archiveId: string\)/);
   assert.doesNotMatch(analyzeApi, /export async function updateVote/);
   assert.match(board, /from "@\/domains\/archive\/api\/vote\.action"/);
   assert.match(register, /from "@\/domains\/archive\/api\/vote\.action"/);
   assert.doesNotMatch(board, /updateVote\(activeArchiveId, status, currentArchive\.userVotes, user\.id\)/);
   assert.doesNotMatch(register, /updateVote\(createdArchive\.id, status, createdArchive\.userVotes, user\.id\)/);
+  assert.match(board, /updateVote\(activeArchiveId, status\)/);
+  assert.match(register, /updateVote\(createdArchive\.id, status\)/);
 });

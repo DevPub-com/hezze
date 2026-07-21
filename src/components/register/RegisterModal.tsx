@@ -15,8 +15,7 @@ import {
 import { updateVote } from "@/domains/archive/api/vote.action";
 import { useAppData } from "@/lib/app-context";
 
-type Step = "source" | "agenda" | "route" | "position" | "done";
-type RouteChoice = "my" | "tomorrow" | "both" | "skip";
+type Step = "source" | "agenda" | "position" | "done";
 
 function defaultExpiry(): string {
   const d = new Date();
@@ -25,7 +24,7 @@ function defaultExpiry(): string {
 }
 
 export function RegisterModal() {
-  const { isCreating, setIsCreating, user, addArchive, markSaved, markTracked, setArchiveList, openAuth } = useAppData();
+  const { isCreating, setIsCreating, user, addArchive, markSaved, setArchiveList, openAuth } = useAppData();
 
   const [step, setStep] = useState<Step>("source");
   const [isBusy, setIsBusy] = useState(false);
@@ -40,7 +39,6 @@ export function RegisterModal() {
   const [targetDates, setTargetDates] = useState<string[]>([]);
   const [newTargetDate, setNewTargetDate] = useState("");
 
-  const [routeChoice, setRouteChoice] = useState<RouteChoice>("skip");
   const [position, setPosition] = useState<RealityStatus | null>(null);
   const [createdArchive, setCreatedArchive] = useState<ArchiveReference | null>(null);
 
@@ -57,7 +55,6 @@ export function RegisterModal() {
     setExpiryDate(defaultExpiry());
     setTargetDates([]);
     setNewTargetDate("");
-    setRouteChoice("skip");
     setPosition(null);
     setCreatedArchive(null);
   };
@@ -80,8 +77,16 @@ export function RegisterModal() {
     try {
       setIsBusy(true);
       setError(null);
-      const preview = await analyzeNewsUrlPreview(inputUrl);
-      setAnalysisPreview(preview);
+      const result = await analyzeNewsUrlPreview(inputUrl);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      if (!result.preview) {
+        setError("링크 분석 결과를 불러오지 못했습니다.");
+        return;
+      }
+      setAnalysisPreview(result.preview);
       setStep("agenda");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "링크 분석 중 오류가 발생했습니다.");
@@ -95,18 +100,21 @@ export function RegisterModal() {
     try {
       setIsBusy(true);
       setError(null);
-      const authorName = user?.email?.split("@")[0] ?? "나";
       const archive = await createArchiveFromNewsPreview(
         analysisPreview,
         userAgenda,
         checkInterval,
         expiryDate,
-        targetDates,
-        authorName
+        targetDates
       );
       addArchive(archive);
       setCreatedArchive(archive);
-      setStep("route");
+      try {
+        await markSaved(archive.id);
+      } catch (saveError: unknown) {
+        setError(saveError instanceof Error ? saveError.message : "My HETJE 저장에 실패했습니다.");
+      }
+      setStep("position");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "HETJE 등록 중 오류가 발생했습니다.");
     } finally {
@@ -114,18 +122,11 @@ export function RegisterModal() {
     }
   };
 
-  const applyRoute = () => {
-    if (!createdArchive) return;
-    if (routeChoice === "my" || routeChoice === "both") markSaved(createdArchive.id);
-    if (routeChoice === "tomorrow" || routeChoice === "both") markTracked(createdArchive.id);
-    setStep("position");
-  };
-
   const applyPosition = async (status: RealityStatus | null) => {
     setPosition(status);
     if (status && createdArchive && user) {
       try {
-        const updatedVotes = await updateVote(createdArchive.id, status, createdArchive.userVotes);
+        const updatedVotes = await updateVote(createdArchive.id, status);
         setArchiveList((prev) =>
           prev.map((a) => (a.id === createdArchive.id ? { ...a, userVotes: updatedVotes } : a))
         );
@@ -300,48 +301,6 @@ export function RegisterModal() {
             </div>
           )}
 
-          {step === "route" && createdArchive && (
-            <div className="space-y-[16px]">
-              <div>
-                <span className="text-[10px] font-black tracking-[0.12em] text-brand-600">USE IT</span>
-                <h2 className="text-[24px] font-black tracking-tight text-foreground mt-[6px]">어떻게 쓸까요?</h2>
-              </div>
-              <div className="border-[1px] border-brand-100 bg-brand-50/40 rounded-[12px] p-[14px]">
-                <h3 className="text-[15px] font-bold text-foreground leading-snug">
-                  &quot;{createdArchive.coreClaim.quote}&quot;
-                </h3>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-[8px]">
-                {([
-                  { key: "my", title: "📚 My HETJE에 저장", desc: "오래 기억할 개인 위키에 보관합니다." },
-                  { key: "tomorrow", title: "📎 Tomorrow로 추적", desc: "앞으로 어떻게 되는지 계속 추적합니다." },
-                  { key: "both", title: "📚📎 저장 + 추적", desc: "보관하면서 동시에 추적합니다." },
-                  { key: "skip", title: "지금은 안 함", desc: "Board에만 남깁니다." },
-                ] as { key: RouteChoice; title: string; desc: string }[]).map((opt) => (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    onClick={() => setRouteChoice(opt.key)}
-                    className={cn(
-                      "text-left border-[1px] rounded-[12px] p-[12px] transition-colors",
-                      routeChoice === opt.key
-                        ? "border-brand-500 bg-brand-50/60"
-                        : "border-border hover:bg-muted/40"
-                    )}
-                  >
-                    <b className="block text-[13px] text-foreground mb-[2px]">{opt.title}</b>
-                    <small className="text-[11px] text-muted-foreground">{opt.desc}</small>
-                  </button>
-                ))}
-              </div>
-              <div className="flex justify-end pt-[8px] border-t-[1px] border-border/50">
-                <Button onClick={applyRoute} className="rounded-[8px] h-[40px] text-[13px] bg-brand-600 hover:bg-brand-700">
-                  이대로 계속
-                </Button>
-              </div>
-            </div>
-          )}
-
           {step === "position" && createdArchive && (
             <div className="space-y-[16px]">
               <div>
@@ -396,12 +355,7 @@ export function RegisterModal() {
                   &quot;{createdArchive.coreClaim.quote}&quot;
                 </h3>
                 <div className="flex flex-wrap gap-[6px] mt-[10px]">
-                  {(routeChoice === "my" || routeChoice === "both") && (
-                    <Badge variant="outline" className="text-[10px] rounded-[999px]">📚 My HETJE</Badge>
-                  )}
-                  {(routeChoice === "tomorrow" || routeChoice === "both") && (
-                    <Badge variant="outline" className="text-[10px] rounded-[999px]">📎 Tomorrow</Badge>
-                  )}
+                  <Badge variant="outline" className="text-[10px] rounded-[999px]">📚 My HETJE</Badge>
                   {position && (
                     <Badge variant="outline" className="text-[10px] rounded-[999px]">
                       입장: {REALITY_STATUS_LABEL[position]}

@@ -12,6 +12,10 @@ export function Topbar() {
   const { user, setIsCreating, openAuth, signOut } = useAppData();
 
   const handleNewHetje = () => {
+    if (!user) {
+      openAuth();
+      return;
+    }
     setIsCreating(true);
     if (pathname !== "/") {
       router.push("/");
@@ -21,13 +25,13 @@ export function Topbar() {
   return (
     <header className="sticky top-0 z-30 border-b border-border/70 bg-card/92 px-[16px] pt-[calc(10px+env(safe-area-inset-top))] pb-[10px] backdrop-blur-xl">
       <div className="flex items-center gap-[10px]">
-        <Link href="/" aria-label="헷제 메인으로 이동" className="flex min-w-0 items-center rounded-[8px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
-          <div className="min-w-0 leading-none">
-            <b className="block text-[18px] tracking-[-0.04em] text-foreground">헷제</b>
-            <span className="mt-[4px] block truncate text-[9px] font-semibold tracking-[0.05em] text-muted-foreground">
-              HUMAN THOUGHT ARCHIVE
-            </span>
-          </div>
+        <Link
+          href="/"
+          aria-label="헷제 메인으로 이동"
+          onClick={() => window.dispatchEvent(new Event("hezze:show-board-list"))}
+          className="flex min-w-0 items-center rounded-[8px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+        >
+          <b className="block text-[20px] tracking-[-0.04em] text-foreground">헷제</b>
         </Link>
 
         <div className="ml-auto flex items-center gap-[7px]">

@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 test("new HETJE analyzes the link before asking for an agenda", async () => {
   const modal = await readFile("src/components/register/RegisterModal.tsx", "utf8");
 
-  assert.match(modal, /type Step = "source" \| "agenda" \| "route" \| "position" \| "done"/);
+  assert.match(modal, /type Step = "source" \| "agenda" \| "position" \| "done"/);
   assert.match(modal, /useState<Step>\("source"\)/);
   assert.match(modal, /analysisPreview/);
   assert.match(modal, /analyzeNewsUrlPreview/);
@@ -16,6 +16,20 @@ test("new HETJE analyzes the link before asking for an agenda", async () => {
   assert.doesNotMatch(modal, /무엇을 남길까요\?/);
   assert.doesNotMatch(modal, /내가 직접 쓰기/);
   assert.doesNotMatch(modal, /createDirectArchive/);
+});
+
+test("new HETJE is automatically saved to My HETJE without a route step", async () => {
+  const modal = await readFile("src/components/register/RegisterModal.tsx", "utf8");
+  const topbar = await readFile("src/components/shell/Topbar.tsx", "utf8");
+
+  assert.match(modal, /await markSaved\(archive\.id\)/);
+  assert.match(modal, /setStep\("position"\)/);
+  assert.doesNotMatch(modal, /RouteChoice/);
+  assert.doesNotMatch(modal, /routeChoice/);
+  assert.doesNotMatch(modal, /step === "route"/);
+  assert.doesNotMatch(modal, /어떻게 쓸까요\?/);
+  assert.match(modal, /📚 My HETJE/);
+  assert.match(topbar, /if \(!user\) \{\s*openAuth\(\);\s*return;/);
 });
 
 test("preview analysis does not write to the database and final registration does", async () => {

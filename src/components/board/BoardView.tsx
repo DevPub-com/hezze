@@ -9,11 +9,12 @@ import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { FileText, AlertCircle, Link as LinkIcon, Users, Loader2, Search, Bell, Clock, ArrowLeft, Sparkles, Bookmark, Pin } from "lucide-react";
+import { FileText, AlertCircle, Link as LinkIcon, Users, Loader2, Search, Bell, Clock, ArrowLeft, Sparkles, Pin } from "lucide-react";
 import { analyzeTimelineUpdate, runPeriodicCheckForArchive } from "@/domains/archive/api/analyze.action";
-import { updateVote, fetchUserVote } from "@/domains/archive/api/vote.action";
+import { updateVote, fetchUserVote, fetchVoteSummary } from "@/domains/archive/api/vote.action";
 import { ViralShareModal } from "@/components/archive/ViralShareModal";
 import { useAppData } from "@/lib/app-context";
+import { formatArchivePostedAt } from "@/lib/format-archive-posted-at";
 
 export function BoardView() {
   const {
@@ -26,15 +27,23 @@ export function BoardView() {
     setErrorMessage,
     searchQuery,
     setSearchQuery,
-    mySaved,
     tracked,
-    toggleSaved,
     toggleTracked,
     openAuth,
   } = useAppData();
 
   const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<"list" | "detail">("list");
+
+  useEffect(() => {
+    const showBoardList = () => {
+      setSelectedArchiveId(null);
+      setMobileView("list");
+    };
+
+    window.addEventListener("hezze:show-board-list", showBoardList);
+    return () => window.removeEventListener("hezze:show-board-list", showBoardList);
+  }, []);
 
   const [userVote, setUserVote] = useState<RealityStatus | null>(null);
 
@@ -47,20 +56,34 @@ export function BoardView() {
   const activeArchiveId = selectedArchiveId ?? archiveList[0]?.id ?? null;
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadUserVote() {
       if (!activeArchiveId || !user) {
-        setUserVote(null);
+        if (!cancelled) setUserVote(null);
         return;
       }
       try {
-        const vote = await fetchUserVote(activeArchiveId);
+        const [vote, voteSummary] = await Promise.all([
+          fetchUserVote(activeArchiveId),
+          fetchVoteSummary(activeArchiveId),
+        ]);
+        if (cancelled) return;
         setUserVote(vote);
+        setArchiveList((currentList) =>
+          currentList.map((archive) =>
+            archive.id === activeArchiveId ? { ...archive, userVotes: voteSummary } : archive
+          )
+        );
       } catch {
-        setUserVote(null);
+        if (!cancelled) setUserVote(null);
       }
     }
     loadUserVote();
-  }, [activeArchiveId, user]);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeArchiveId, setArchiveList, user]);
 
 
   const handleAddTimelineItem = async (event: React.FormEvent) => {
@@ -118,7 +141,7 @@ export function BoardView() {
 
     try {
       setErrorMessage(null);
-      const updatedVotes = await updateVote(activeArchiveId, status, currentArchive.userVotes);
+      const updatedVotes = await updateVote(activeArchiveId, status);
 
       const updatedList = archiveList.map((archive) => {
         if (archive.id === activeArchiveId) {
@@ -183,7 +206,8 @@ export function BoardView() {
     return (
       archive.coreClaim.quote.toLowerCase().includes(query) ||
       archive.speaker.name.toLowerCase().includes(query) ||
-      archive.speaker.organization.toLowerCase().includes(query)
+      archive.speaker.organization.toLowerCase().includes(query) ||
+      archive.evidence.sourceVenue.toLowerCase().includes(query)
     );
   });
 
@@ -209,7 +233,6 @@ export function BoardView() {
           <div className="flex-1 overflow-y-auto divide-y-[1px] divide-border/60">
             {filteredArchiveList.map((archive) => {
               const isSelected = archive.id === activeArchiveId;
-              const isSaved = mySaved.has(archive.id);
               const isTracked = tracked.has(archive.id);
               return (
                 <div
@@ -248,30 +271,21 @@ export function BoardView() {
 
                   <div className="flex items-center justify-between text-[11px] text-muted-foreground mt-[4px]">
                     <span className="font-semibold text-foreground/80">
-                      {archive.speaker.name} ({archive.speaker.organization})
+                      {archive.evidence.sourceVenue}
                     </span>
                     <span className="font-bold text-brand-600">
                       팩트 지수 {archive.realityMeter.currentIndex}%
                     </span>
                   </div>
 
+                  <div className="flex items-center gap-[4px] text-[10px] text-muted-foreground">
+                    <Clock className="h-[11px] w-[11px]" aria-hidden="true" />
+                    <time dateTime={archive.evidence.recordedAt}>
+                      {formatArchivePostedAt(archive.evidence.recordedAt)}
+                    </time>
+                  </div>
+
                   <div className="flex items-center gap-[6px] mt-[4px]">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        toggleSaved(archive.id);
-                      }}
-                      className={cn(
-                        "flex items-center gap-[4px] rounded-[999px] border-[1px] px-[8px] py-[4px] text-[10px] font-bold transition-colors",
-                        isSaved
-                          ? "bg-brand-50 text-brand-600 border-brand-100"
-                          : "bg-card text-muted-foreground border-border hover:bg-muted/40"
-                      )}
-                    >
-                      <Bookmark className="w-[11px] h-[11px]" />
-                      {isSaved ? "My HETJE" : "＋ My HETJE"}
-                    </button>
                     <button
                       type="button"
                       onClick={(event) => {
@@ -284,10 +298,10 @@ export function BoardView() {
                           ? "bg-brand-50 text-brand-600 border-brand-100"
                           : "bg-card text-muted-foreground border-border hover:bg-muted/40"
                       )}
-                    >
-                      <Pin className="w-[11px] h-[11px]" />
-                      {isTracked ? "Tomorrow" : "📎 Tomorrow"}
-                    </button>
+                      >
+                        <Pin className="w-[11px] h-[11px]" />
+                        Tomorrow
+                      </button>
                   </div>
                 </div>
               );
@@ -327,7 +341,7 @@ export function BoardView() {
                     <CardHeader className="bg-muted/30 border-b-[1px] border-border/50 pb-[12px] flex flex-row items-center justify-between">
                       <div className="flex items-center gap-[8px] text-brand-600">
                         <FileText className="w-[18px] h-[18px]" />
-                        <CardTitle className="text-[15px] font-bold">📌 누가 무슨 말을 했냐면요</CardTitle>
+                        <CardTitle className="text-[15px] font-bold">누가 무슨 말을 했냐면요</CardTitle>
                       </div>
                       <Button
                         onClick={() => setViralModalOpen(true)}
@@ -335,7 +349,7 @@ export function BoardView() {
                         className="h-[32px] bg-brand-600 hover:bg-brand-700 text-white rounded-[6px] text-[11px] font-bold px-[10px]"
                       >
                         <Sparkles className="w-[12px] h-[12px] mr-[4px]" />
-                        ✨ 자랑용 성지순례 카드
+                        자랑용 성지순례 카드
                       </Button>
                     </CardHeader>
                     <CardContent className="pt-[24px]">
@@ -384,6 +398,12 @@ export function BoardView() {
                             <div className="text-[12px] text-muted-foreground">
                               {selectedArchive.speaker.position}, {selectedArchive.speaker.organization}
                             </div>
+                            <div className="mt-[4px] flex items-center gap-[4px] text-[11px] text-muted-foreground">
+                              <Clock className="h-[12px] w-[12px]" aria-hidden="true" />
+                              <time dateTime={selectedArchive.evidence.recordedAt}>
+                                {formatArchivePostedAt(selectedArchive.evidence.recordedAt)}
+                              </time>
+                            </div>
                           </div>
                         </div>
 
@@ -424,7 +444,7 @@ export function BoardView() {
                     <CardHeader className="pb-[12px] border-b-[1px] border-border/50">
                       <div className="flex items-center gap-[8px] text-muted-foreground">
                         <AlertCircle className="w-[18px] h-[18px]" />
-                        <CardTitle className="text-[15px] font-bold text-foreground">💡 한 줄로 딱 정리해 드릴게요</CardTitle>
+                        <CardTitle className="text-[15px] font-bold text-foreground">한 줄로 딱 정리해 드릴게요</CardTitle>
                       </div>
                     </CardHeader>
                     <CardContent className="pt-[16px]">
@@ -448,7 +468,7 @@ export function BoardView() {
                   <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-300 rounded-[12px]">
                     <CardHeader className="pb-[12px] border-b-[1px] border-border/50">
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-[15px] font-bold">👥 사람들의 생각은 어떤가요?</CardTitle>
+                        <CardTitle className="text-[15px] font-bold">사람들의 생각은 어떤가요?</CardTitle>
                         <Users className="w-[16px] h-[16px] text-muted-foreground" />
                       </div>
                     </CardHeader>
@@ -486,7 +506,7 @@ export function BoardView() {
                   <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-300 rounded-[12px]">
                     <CardHeader className="pb-[12px] border-b-[1px] border-border/50">
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-[15px] font-bold">⏱️ 말한 뒤로 어떻게 변했을까요?</CardTitle>
+                        <CardTitle className="text-[15px] font-bold">말한 뒤로 어떻게 변했을까요?</CardTitle>
                         <Clock className="w-[16px] h-[16px] text-muted-foreground" />
                       </div>
                     </CardHeader>
@@ -800,9 +820,9 @@ export function BoardView() {
                               참여 평가자 총 {totalVotes.toLocaleString()}명 실시간 투표 집계 기반
                             </div>
                             <div className="space-y-[12px]">
-                              {(Object.entries(selectedArchive.userVotes) as [RealityStatus, number][])
-                                .sort((a, b) => b[1] - a[1])
-                                .map(([status, count]) => {
+                              {(Object.keys(REALITY_STATUS_LABEL) as RealityStatus[])
+                                .map((status) => {
+                                  const count = selectedArchive.userVotes?.[status] || 0;
                                   const percentage = Math.round((count / totalVotes) * 100);
                                   return (
                                     <div key={status} className="space-y-[4px]">
@@ -962,12 +982,13 @@ export function BoardView() {
                     if (totalVotes === 0) {
                       return <div className="text-[11px] text-slate-500 italic p-[10px]">등록된 시민 평가단 투표가 없습니다.</div>;
                     }
-                    return (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-[8px] sm:gap-[12px] bg-slate-50 p-[16px] rounded-[6px]">
-                        {(Object.entries(selectedArchive.userVotes) as [RealityStatus, number][])
-                          .filter(([, count]) => count > 0)
-                          .map(([status, count]) => {
-                            const percentage = Math.round((count / totalVotes) * 100);
+                        return (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-[8px] sm:gap-[12px] bg-slate-50 p-[16px] rounded-[6px]">
+                            {(Object.keys(REALITY_STATUS_LABEL) as RealityStatus[])
+                              .filter((status) => (selectedArchive.userVotes?.[status] || 0) > 0)
+                              .map((status) => {
+                                const count = selectedArchive.userVotes?.[status] || 0;
+                                const percentage = Math.round((count / totalVotes) * 100);
                             return (
                               <div key={status} className="flex justify-between items-center text-[11px] border-b-[1px] border-slate-200/60 pb-[4px] last:border-0">
                                 <span className="font-bold text-slate-700">{REALITY_STATUS_LABEL[status]}</span>

@@ -1,6 +1,14 @@
 import { getSupabaseClient } from "@/lib/supabase";
 import { RealityStatus } from "../model/archive.model";
 
+const EMPTY_VOTE_SUMMARY: Record<RealityStatus, number> = {
+  [RealityStatus.REALIZING]: 0,
+  [RealityStatus.FADING]: 0,
+  [RealityStatus.DEBATING]: 0,
+  [RealityStatus.DEFUNCT]: 0,
+  [RealityStatus.REALIZED]: 0,
+};
+
 async function getAuthenticatedVoteClient() {
   const client = getSupabaseClient();
   const { data: { session }, error } = await client.auth.getSession();
@@ -12,28 +20,39 @@ async function getAuthenticatedVoteClient() {
   return { client, userId: session.user.id };
 }
 
-export async function updateVote(
-  archiveId: string,
-  status: RealityStatus,
-  currentVotes: Record<RealityStatus, number>
+async function fetchVoteSummaryWithClient(
+  client: ReturnType<typeof getSupabaseClient>,
+  archiveId: string
 ): Promise<Record<RealityStatus, number>> {
-  const { client, userId } = await getAuthenticatedVoteClient();
-  const { data: existingVote, error: selectError } = await client
+  const { data, error } = await client
     .from("votes")
     .select("status")
-    .eq("archive_id", archiveId)
-    .eq("user_id", userId)
-    .maybeSingle();
+    .eq("archive_id", archiveId);
 
-  if (selectError) {
-    throw new Error(`기존 투표 조회 실패: ${selectError.message}`);
+  if (error) {
+    throw new Error(`투표 집계 조회 실패: ${error.message}`);
   }
 
-  const oldStatus = existingVote?.status as RealityStatus | undefined;
-  if (oldStatus === status) {
-    return currentVotes;
+  const summary = { ...EMPTY_VOTE_SUMMARY };
+  for (const row of data || []) {
+    const status = row.status as RealityStatus;
+    if (Object.prototype.hasOwnProperty.call(summary, status)) {
+      summary[status] += 1;
+    }
   }
+  return summary;
+}
 
+export async function fetchVoteSummary(archiveId: string): Promise<Record<RealityStatus, number>> {
+  const { client } = await getAuthenticatedVoteClient();
+  return fetchVoteSummaryWithClient(client, archiveId);
+}
+
+export async function updateVote(
+  archiveId: string,
+  status: RealityStatus
+): Promise<Record<RealityStatus, number>> {
+  const { client, userId } = await getAuthenticatedVoteClient();
   const { error: saveError } = await client
     .from("votes")
     .upsert(
@@ -45,12 +64,7 @@ export async function updateVote(
     throw new Error(`투표 저장 실패: ${saveError.message}`);
   }
 
-  const updatedVotes = { ...currentVotes };
-  if (oldStatus) {
-    updatedVotes[oldStatus] = Math.max(0, (updatedVotes[oldStatus] || 0) - 1);
-  }
-  updatedVotes[status] = (updatedVotes[status] || 0) + 1;
-  return updatedVotes;
+  return fetchVoteSummaryWithClient(client, archiveId);
 }
 
 export async function fetchUserVote(archiveId: string): Promise<RealityStatus | null> {

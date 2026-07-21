@@ -20,7 +20,7 @@ interface AppDataContextValue {
   setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
   mySaved: Set<string>;
   toggleSaved: (id: string) => void;
-  markSaved: (id: string) => void;
+  markSaved: (id: string) => Promise<void>;
   tracked: Set<string>;
   toggleTracked: (id: string) => void;
   markTracked: (id: string) => void;
@@ -148,10 +148,22 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     setArchiveList((prev) => [archive, ...prev]);
   }, []);
 
-  const markSaved = useCallback((id: string) => {
+  const markSaved = useCallback(async (id: string) => {
+    if (!user) {
+      setAuthModalOpen(true);
+      throw new Error("My HETJE 저장을 위해 다시 로그인해 주세요.");
+    }
     setMySaved((prev) => new Set(prev).add(id));
-    if (user) {
-      setBookmark(id, "saved", true).catch(() => {});
+    try {
+      await setBookmark(id, "saved", true);
+    } catch (error) {
+      setMySaved((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setErrorMessage("My HETJE 저장에 실패했습니다.");
+      throw error;
     }
   }, [user]);
 

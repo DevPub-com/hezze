@@ -45,7 +45,7 @@ export function LeaderboardSection() {
             }`}
           >
             <Trophy className="w-[16px] h-[18px]" />
-            <span>🏆 인물 팩트 타율 순위</span>
+            <span>인물 팩트 타율 순위</span>
           </button>
           <button
             onClick={() => setActiveTab("user")}
@@ -56,7 +56,7 @@ export function LeaderboardSection() {
             }`}
           >
             <Target className="w-[16px] h-[18px]" />
-            <span>🔮 성지 예측 명예의 전당</span>
+            <span>성지 예측 명예의 전당</span>
           </button>
         </div>
       </div>
