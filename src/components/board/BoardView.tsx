@@ -53,7 +53,8 @@ export function BoardView() {
   const [timelineUrl, setTimelineUrl] = useState("");
   const [isTimelineLoading, setIsTimelineLoading] = useState(false);
 
-  const activeArchiveId = selectedArchiveId ?? archiveList[0]?.id ?? null;
+  const publicArchiveList = archiveList.filter((archive) => archive.isPublic);
+  const activeArchiveId = selectedArchiveId ?? publicArchiveList[0]?.id ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -201,7 +202,7 @@ export function BoardView() {
     }
   };
 
-  const filteredArchiveList = archiveList.filter((archive) => {
+  const filteredArchiveList = publicArchiveList.filter((archive) => {
     const query = searchQuery.toLowerCase();
     return (
       archive.coreClaim.quote.toLowerCase().includes(query) ||
@@ -211,7 +212,7 @@ export function BoardView() {
     );
   });
 
-  const selectedArchive = archiveList.find((archive) => archive.id === activeArchiveId);
+  const selectedArchive = publicArchiveList.find((archive) => archive.id === activeArchiveId);
 
   return (
     <main className="bg-background">

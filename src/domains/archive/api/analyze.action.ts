@@ -4,7 +4,7 @@ import * as cheerio from "cheerio";
 import OpenAI from "openai";
 import { GoogleGenAI, Type } from "@google/genai";
 import { getSupabaseClient } from "@/lib/supabase";
-import { ArchiveReference, CategoryType, RealityStatus, CheckInterval, TimelineItem, NotificationLog, RealizationTrajectory, SpeakerRankItem, UserRankItem } from "../model/archive.model";
+import { ArchiveReference, CategoryType, RealityStatus, CheckInterval, HetjeIntent, HetjeStance, TimelineItem, NotificationLog, RealizationTrajectory, SpeakerRankItem, UserRankItem } from "../model/archive.model";
 import { extractYoutubeVideoId } from "../lib/youtube-url.mjs";
 
 if (process.env.NODE_ENV === "development") {
@@ -41,6 +41,9 @@ interface DBArchive {
   reference_number: string;
   category: string;
   news_category: string;
+  content_intent?: string;
+  is_public?: boolean;
+  creator_stance?: string | null;
   core_claim_quote: string;
   core_claim_context: string;
   speaker_name: string;
@@ -104,6 +107,13 @@ export async function fetchArchivesList(): Promise<ArchiveReference[]> {
       referenceNumber: archive.reference_number,
       category: archive.category as CategoryType,
       newsCategory: archive.news_category,
+      intent: Object.values(HetjeIntent).includes(archive.content_intent as HetjeIntent)
+        ? archive.content_intent as HetjeIntent
+        : HetjeIntent.SHARE,
+      isPublic: archive.is_public ?? true,
+      creatorStance: Object.values(HetjeStance).includes(archive.creator_stance as HetjeStance)
+        ? archive.creator_stance as HetjeStance
+        : null,
       coreClaim: {
         quote: archive.core_claim_quote,
         contextDescription: archive.core_claim_context,
@@ -399,12 +409,14 @@ export interface NewsAnalysisPreview {
   speakerOrganization: string;
   realityIndex: number;
   status: RealityStatus;
+  recommendedIntent: HetjeIntent;
+  recommendationReason: string;
 }
 
 async function analyzeNewsUrlPreviewInternal(url: string): Promise<NewsAnalysisPreview> {
   const trimmedUrl = url.trim();
   if (!trimmedUrl) {
-    throw new Error("분석할 기사 또는 YouTube 링크를 입력해 주십시오.");
+    throw new Error("분석할 원본 콘텐츠 링크를 입력해 주세요.");
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
@@ -465,8 +477,8 @@ async function analyzeNewsUrlPreviewInternal(url: string): Promise<NewsAnalysisP
     }
 
     const prompt = ` 
-아래 뉴스 기사 본문을 읽고 분석하여 객관적인 사실을 요약하고, 관련 화자 정보 및 카테고리를 분류하십시오.
-뉴스의 객관성을 검증하고 신뢰할 수 있는 정보를 추출하는 것이 목적입니다.
+아래 원본 콘텐츠를 읽고 핵심 내용을 요약하고, 화자 정보와 콘텐츠 성격을 분류하십시오.
+뉴스 기사뿐 아니라 YouTube 레슨, 학습 자료, 칼럼, 리포트일 수 있습니다.
 
 기사 제목: ${title}
 기사 본문:
@@ -493,6 +505,12 @@ ${textContent}
     - 15점: 정황상의 간접 증거만 제시됨
     - 0점: 증거 제시 없이 단순 주장 혹은 감정적 호소만 존재함
 11. status: 기사 내용을 종합하여 현재 뉴스의 상태를 "REALIZING" (실현 중), "FADING" (흐려지는 중), "DEBATING" (논쟁 중), "DEFUNCT" (소멸함), "REALIZED" (실현 완료) 중 하나로 판별할 것.
+12. recommendedIntent: 콘텐츠를 남기는 기본 목적을 아래 하나로 추천할 것.
+    - REMEMBER: 레슨, 학습, 좋은 문장, 참고자료처럼 개인적으로 다시 볼 콘텐츠
+    - OPINION: 사용자의 해석, 반박, 동의 여부를 덧붙이기 좋은 콘텐츠
+    - TRACK: 기한이나 시점이 있는 주장, 약속, 예측처럼 시간이 지나야 확인 가능한 콘텐츠
+    - SHARE: 공개 토론 가치가 크거나 여러 사람의 의견을 모으기 좋은 콘텐츠
+13. recommendationReason: 왜 그 목적을 추천하는지 콘텐츠의 구체적인 성격을 근거로 한 문장으로 작성할 것.
 `;
 
     let parsedData: {
@@ -506,6 +524,8 @@ ${textContent}
       scoreFeasibility: number;
       scoreEvidence: number;
       status: string;
+      recommendedIntent: string;
+      recommendationReason: string;
     };
 
     if (isYoutube) {
@@ -538,6 +558,11 @@ ${textContent}
                 type: Type.STRING,
                 enum: ["REALIZING", "FADING", "DEBATING", "DEFUNCT", "REALIZED"],
               },
+              recommendedIntent: {
+                type: Type.STRING,
+                enum: ["REMEMBER", "OPINION", "TRACK", "SHARE"],
+              },
+              recommendationReason: { type: Type.STRING },
             },
             required: [
               "title",
@@ -550,6 +575,8 @@ ${textContent}
               "scoreFeasibility",
               "scoreEvidence",
               "status",
+              "recommendedIntent",
+              "recommendationReason",
             ],
           },
         },
@@ -566,7 +593,7 @@ ${textContent}
         messages: [
           {
             role: "system",
-            content: "You are an AI that summarizes news articles objectively. You must output strictly valid JSON conforming to the schema.",
+            content: "You summarize linked source content objectively and recommend how the user should keep it. Output strictly valid JSON conforming to the schema.",
           },
           {
             role: "user",
@@ -590,7 +617,9 @@ ${textContent}
                 scoreSourceReliability: { type: "integer" },
                 scoreFeasibility: { type: "integer" },
                 scoreEvidence: { type: "integer" },
-                status: { type: "string", enum: ["REALIZING", "FADING", "DEBATING", "DEFUNCT", "REALIZED"] }
+                status: { type: "string", enum: ["REALIZING", "FADING", "DEBATING", "DEFUNCT", "REALIZED"] },
+                recommendedIntent: { type: "string", enum: ["REMEMBER", "OPINION", "TRACK", "SHARE"] },
+                recommendationReason: { type: "string" },
               },
               required: [
                 "title",
@@ -602,7 +631,9 @@ ${textContent}
                 "scoreSourceReliability",
                 "scoreFeasibility",
                 "scoreEvidence",
-                "status"
+                "status",
+                "recommendedIntent",
+                "recommendationReason",
               ],
               additionalProperties: false
             }
@@ -625,6 +656,10 @@ ${textContent}
       speakerOrganization: parsedData.speakerOrganization,
       realityIndex: parsedData.scoreSourceReliability + parsedData.scoreFeasibility + parsedData.scoreEvidence,
       status: parsedData.status as RealityStatus,
+      recommendedIntent: Object.values(HetjeIntent).includes(parsedData.recommendedIntent as HetjeIntent)
+        ? parsedData.recommendedIntent as HetjeIntent
+        : HetjeIntent.REMEMBER,
+      recommendationReason: parsedData.recommendationReason.trim(),
     };
   } catch (error: unknown) {
     console.error("뉴스 분석 실패:", error);
@@ -649,9 +684,14 @@ export async function analyzeNewsUrlPreview(url: string): Promise<NewsAnalysisRe
 export async function createArchiveFromNewsPreview(
   preview: NewsAnalysisPreview,
   userAgenda: string,
-  checkInterval: CheckInterval = CheckInterval.WEEKLY,
-  expiryDate: string = "",
-  targetDates: string[] = []
+  options: {
+    intent: HetjeIntent;
+    isPublic: boolean;
+    creatorStance?: HetjeStance | null;
+    checkInterval?: CheckInterval;
+    expiryDate?: string;
+    targetDates?: string[];
+  }
 ): Promise<ArchiveReference> {
   const trimmedAgenda = userAgenda.trim();
   if (!trimmedAgenda) {
@@ -662,14 +702,16 @@ export async function createArchiveFromNewsPreview(
   const summary = preview.summary.trim();
   const sourceUrl = preview.sourceUrl.trim();
   if (!title || !summary || !sourceUrl) {
-    throw new Error("기사 분석 결과가 올바르지 않습니다. 링크를 다시 분석해 주십시오.");
+    throw new Error("원본 콘텐츠 분석 결과가 올바르지 않습니다. 링크를 다시 분석해 주세요.");
   }
 
   const allowedStatuses = Object.values(RealityStatus);
   const status = allowedStatuses.includes(preview.status) ? preview.status : RealityStatus.DEBATING;
   const realityIndex = Math.max(0, Math.min(100, Math.round(Number(preview.realityIndex) || 0)));
   const referenceNumber = "SIG-" + Math.floor(Math.random() * 10000);
-  const defaultExpiryDate = expiryDate || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const checkInterval = options.checkInterval ?? CheckInterval.WEEKLY;
+  const targetDates = options.targetDates ?? [];
+  const defaultExpiryDate = options.expiryDate || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
   const { data: archiveData, error: archiveError } = await getSupabaseClient()
     .from("archives")
@@ -677,6 +719,9 @@ export async function createArchiveFromNewsPreview(
       reference_number: referenceNumber,
       category: CategoryType.ENTRY_QUOTE,
       news_category: preview.newsCategory,
+      content_intent: options.intent,
+      is_public: options.isPublic,
+      creator_stance: options.creatorStance ?? null,
       core_claim_quote: trimmedAgenda,
       core_claim_context: preview.summary,
       speaker_name: preview.speakerName.trim() || "보도진",
@@ -765,6 +810,9 @@ export async function createArchiveFromNewsPreview(
     referenceNumber: dbArchive.reference_number,
     category: dbArchive.category as CategoryType,
     newsCategory: dbArchive.news_category,
+    intent: options.intent,
+    isPublic: options.isPublic,
+    creatorStance: options.creatorStance ?? null,
     coreClaim: {
       quote: dbArchive.core_claim_quote,
       contextDescription: dbArchive.core_claim_context,
@@ -829,6 +877,9 @@ export async function createDirectArchive(
       reference_number: referenceNumber,
       category: CategoryType.ENTRY_QUOTE,
       news_category: "직접 작성",
+      content_intent: HetjeIntent.REMEMBER,
+      is_public: false,
+      creator_stance: null,
       core_claim_quote: trimmedStatement,
       core_claim_context: contextDescription,
       speaker_name: authorName,
@@ -919,6 +970,9 @@ export async function createDirectArchive(
     referenceNumber: dbArchive.reference_number,
     category: dbArchive.category as CategoryType,
     newsCategory: dbArchive.news_category,
+    intent: HetjeIntent.REMEMBER,
+    isPublic: false,
+    creatorStance: null,
     coreClaim: {
       quote: dbArchive.core_claim_quote,
       contextDescription: dbArchive.core_claim_context,
@@ -1387,6 +1441,13 @@ JSON 반환 형식 (업데이트가 있는 경우):
     referenceNumber: updatedDbArchive.reference_number,
     category: updatedDbArchive.category as CategoryType,
     newsCategory: updatedDbArchive.news_category,
+    intent: Object.values(HetjeIntent).includes(updatedDbArchive.content_intent as HetjeIntent)
+      ? updatedDbArchive.content_intent as HetjeIntent
+      : HetjeIntent.SHARE,
+    isPublic: updatedDbArchive.is_public ?? true,
+    creatorStance: Object.values(HetjeStance).includes(updatedDbArchive.creator_stance as HetjeStance)
+      ? updatedDbArchive.creator_stance as HetjeStance
+      : null,
     coreClaim: {
       quote: updatedDbArchive.core_claim_quote,
       contextDescription: updatedDbArchive.core_claim_context,

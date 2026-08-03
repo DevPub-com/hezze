@@ -23,7 +23,7 @@ interface AppDataContextValue {
   markSaved: (id: string) => Promise<void>;
   tracked: Set<string>;
   toggleTracked: (id: string) => void;
-  markTracked: (id: string) => void;
+  markTracked: (id: string) => Promise<void>;
   isCreating: boolean;
   setIsCreating: React.Dispatch<React.SetStateAction<boolean>>;
   authModalOpen: boolean;
@@ -167,10 +167,22 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
-  const markTracked = useCallback((id: string) => {
+  const markTracked = useCallback(async (id: string) => {
+    if (!user) {
+      setAuthModalOpen(true);
+      throw new Error("Tomorrow 추적을 위해 다시 로그인해 주세요.");
+    }
     setTracked((prev) => new Set(prev).add(id));
-    if (user) {
-      setBookmark(id, "tracked", true).catch(() => {});
+    try {
+      await setBookmark(id, "tracked", true);
+    } catch (error) {
+      setTracked((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setErrorMessage("Tomorrow 추적 저장에 실패했습니다.");
+      throw error;
     }
   }, [user]);
 

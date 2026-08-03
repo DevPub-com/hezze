@@ -11,9 +11,23 @@ export async function GET() {
     const currentDayOfWeek = currentDateObject.getDay();
     const currentDayOfMonth = currentDateObject.getDate();
 
+    const { data: trackedBookmarks, error: bookmarkError } = await getSupabaseClient()
+      .rpc("list_tracked_archive_ids");
+
+    if (bookmarkError) {
+      return NextResponse.json({ error: bookmarkError.message }, { status: 500 });
+    }
+
+    const trackedRows = (trackedBookmarks || []) as Array<{ archive_id: string }>;
+    const trackedArchiveIds = [...new Set(trackedRows.map((bookmark) => bookmark.archive_id))];
+    if (trackedArchiveIds.length === 0) {
+      return NextResponse.json({ success: true, checked: 0 });
+    }
+
     const { data: archives, error: fetchError } = await getSupabaseClient()
       .from("archives")
       .select("id, check_interval, created_at, target_dates")
+      .in("id", trackedArchiveIds)
       .gte("expiry_date", currentDateString);
 
     if (fetchError) {
@@ -60,4 +74,3 @@ export async function GET() {
     );
   }
 }
-

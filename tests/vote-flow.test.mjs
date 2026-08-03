@@ -60,9 +60,9 @@ test("vote mutations use the signed-in browser session instead of a server actio
   assert.match(voteApi, /export async function fetchUserVote\(archiveId: string\)/);
   assert.doesNotMatch(analyzeApi, /export async function updateVote/);
   assert.match(board, /from "@\/domains\/archive\/api\/vote\.action"/);
-  assert.match(register, /from "@\/domains\/archive\/api\/vote\.action"/);
+  assert.doesNotMatch(register, /from "@\/domains\/archive\/api\/vote\.action"/);
   assert.doesNotMatch(board, /updateVote\(activeArchiveId, status, currentArchive\.userVotes, user\.id\)/);
-  assert.doesNotMatch(register, /updateVote\(createdArchive\.id, status, createdArchive\.userVotes, user\.id\)/);
+  assert.doesNotMatch(register, /updateVote\(/);
   assert.match(board, /updateVote\(activeArchiveId, status\)/);
-  assert.match(register, /updateVote\(createdArchive\.id, status\)/);
+  assert.match(register, /HetjeStance/);
 });

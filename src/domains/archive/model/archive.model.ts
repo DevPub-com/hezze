@@ -41,6 +41,19 @@ export enum CheckInterval {
   MONTHLY = 'MONTHLY',
 }
 
+export enum HetjeIntent {
+  REMEMBER = 'REMEMBER',
+  OPINION = 'OPINION',
+  TRACK = 'TRACK',
+  SHARE = 'SHARE',
+}
+
+export enum HetjeStance {
+  AGREE = 'AGREE',
+  HOLD = 'HOLD',
+  DISAGREE = 'DISAGREE',
+}
+
 export const CHECK_INTERVAL_LABEL: Record<CheckInterval, string> = {
   [CheckInterval.DAILY]: '매일',
   [CheckInterval.WEEKLY]: '매주',
@@ -70,6 +83,9 @@ export interface ArchiveReference {
   referenceNumber: string;
   category: CategoryType;
   newsCategory: string;
+  intent: HetjeIntent;
+  isPublic: boolean;
+  creatorStance?: HetjeStance | null;
   
   coreClaim: {
     quote: string;
@@ -141,5 +157,3 @@ export interface UserRankItem {
   accuracyRate: number;
   badgeTitle: string;
 }
-
-
