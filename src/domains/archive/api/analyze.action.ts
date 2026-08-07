@@ -18,6 +18,17 @@ function cleanJsonText(rawText: string): string {
     .trim();
 }
 
+const MOONSHOT_BASE_URL = process.env.MOONSHOT_BASE_URL || "https://api.moonshot.ai/v1";
+const MOONSHOT_MODEL = process.env.MOONSHOT_MODEL || "kimi-k3";
+
+function createMoonshotClient(): OpenAI {
+  const apiKey = process.env.MOONSHOT_API_KEY;
+  if (!apiKey) {
+    throw new Error("MOONSHOT_API_KEY가 설정되지 않았습니다.");
+  }
+
+  return new OpenAI({ apiKey, baseURL: MOONSHOT_BASE_URL });
+}
 
 interface DBTimeline {
   id: string;
@@ -419,12 +430,7 @@ async function analyzeNewsUrlPreviewInternal(url: string): Promise<NewsAnalysisP
     throw new Error("분석할 원본 콘텐츠 링크를 입력해 주세요.");
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY가 설정되지 않았습니다.");
-  }
-
-  const openai = new OpenAI({ apiKey });
+  const moonshot = createMoonshotClient();
 
   try {
     const isYoutube = trimmedUrl.includes("youtube.com") || trimmedUrl.includes("youtu.be");
@@ -588,8 +594,8 @@ ${textContent}
       }
       parsedData = JSON.parse(cleanJsonText(responseText));
     } else {
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+      const completion = await moonshot.chat.completions.create({
+        model: MOONSHOT_MODEL,
         messages: [
           {
             role: "system",
@@ -1016,12 +1022,7 @@ export async function analyzeTimelineUpdate(
   originalArchive: ArchiveReference,
   newArticleUrl: string
 ): Promise<{ timelineItem: TimelineItem; updatedRealityIndex: number; updatedStatus: RealityStatus }> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY가 설정되지 않았습니다.");
-  }
-
-  const openai = new OpenAI({ apiKey });
+  const moonshot = createMoonshotClient();
 
   try {
     const isYoutube = newArticleUrl.includes("youtube.com") || newArticleUrl.includes("youtu.be");
@@ -1140,8 +1141,8 @@ ${textContent}
       }
       parsedData = JSON.parse(cleanJsonText(responseText));
     } else {
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+      const completion = await moonshot.chat.completions.create({
+        model: MOONSHOT_MODEL,
         messages: [
           {
             role: "system",
