@@ -19,7 +19,7 @@ function cleanJsonText(rawText: string): string {
 }
 
 const MOONSHOT_BASE_URL = process.env.MOONSHOT_BASE_URL || "https://api.moonshot.ai/v1";
-const MOONSHOT_MODEL = process.env.MOONSHOT_MODEL || "kimi-k3";
+const MOONSHOT_MODEL = process.env.MOONSHOT_MODEL || "moonshot-v1-8k";
 
 function createMoonshotClient(): OpenAI {
   const apiKey = process.env.MOONSHOT_API_KEY;

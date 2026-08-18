@@ -126,17 +126,17 @@ export interface ArchiveReference {
 }
 
 export const REALITY_STATUS_LABEL: Record<RealityStatus, string> = {
-  [RealityStatus.REALIZING]: '🚀 착착 진행 중',
-  [RealityStatus.FADING]: '🌫️ 소문만 무성해요',
-  [RealityStatus.DEBATING]: '🔥 갑론을박 핫해요',
-  [RealityStatus.DEFUNCT]: '🪦 없었던 일로…',
-  [RealityStatus.REALIZED]: '🎉 진짜 해냈어요!',
+  [RealityStatus.REALIZING]: '진행 중',
+  [RealityStatus.FADING]: '동력 약화',
+  [RealityStatus.DEBATING]: '논쟁 중',
+  [RealityStatus.DEFUNCT]: '중단',
+  [RealityStatus.REALIZED]: '실현',
 };
 
 export const REALIZATION_TRAJECTORY_LABEL: Record<RealizationTrajectory, string> = {
-  [RealizationTrajectory.FORWARD]: '🎯 계획대로 척척',
-  [RealizationTrajectory.DETOUR]: '🔀 삼천포로 새는 중',
-  [RealizationTrajectory.REVERSED]: '↩️ 오히려 반대로!',
+  [RealizationTrajectory.FORWARD]: '계획대로 진행',
+  [RealizationTrajectory.DETOUR]: '방향 변경',
+  [RealizationTrajectory.REVERSED]: '반대 방향',
 };
 
 export interface SpeakerRankItem {

@@ -59,11 +59,12 @@ test("the Supabase migration installs HETJE intent columns and refreshes the sch
   assert.match(migration, /notify pgrst, 'reload schema'/);
 });
 
-test("Board only renders HETJEs explicitly marked public", async () => {
+test("Board feed is public while saved deep links can still open their detail", async () => {
   const board = await readFile("src/components/board/BoardView.tsx", "utf8");
 
   assert.match(board, /archiveList\.filter\(\(archive\) => archive\.isPublic\)/);
-  assert.match(board, /publicArchiveList\.find/);
+  assert.match(board, /publicArchiveList\.filter/);
+  assert.match(board, /archiveList\.find\(\(archive\) => archive\.id === activeArchiveId\)/);
   assert.match(board, /publicArchiveList\[0\]/);
 });
 

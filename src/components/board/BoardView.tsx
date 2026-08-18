@@ -9,14 +9,14 @@ import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { FileText, AlertCircle, Link as LinkIcon, Users, Loader2, Search, Bell, Clock, ArrowLeft, Sparkles, Pin } from "lucide-react";
+import { FileText, AlertCircle, Link as LinkIcon, Users, Loader2, Search, Bell, Clock, ArrowLeft, Pin, Bookmark, CheckCircle2, Share2, X, Radio, CalendarDays, ListChecks, Check } from "lucide-react";
 import { analyzeTimelineUpdate, runPeriodicCheckForArchive } from "@/domains/archive/api/analyze.action";
 import { updateVote, fetchUserVote, fetchVoteSummary } from "@/domains/archive/api/vote.action";
 import { ViralShareModal } from "@/components/archive/ViralShareModal";
 import { useAppData } from "@/lib/app-context";
 import { formatArchivePostedAt } from "@/lib/format-archive-posted-at";
 
-export function BoardView() {
+export function BoardView({ initialArchiveId = null }: { initialArchiveId?: string | null }) {
   const {
     archiveList,
     setArchiveList,
@@ -27,13 +27,17 @@ export function BoardView() {
     setErrorMessage,
     searchQuery,
     setSearchQuery,
+    mySaved,
+    toggleSaved,
     tracked,
     toggleTracked,
     openAuth,
   } = useAppData();
 
-  const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null);
-  const [mobileView, setMobileView] = useState<"list" | "detail">("list");
+  const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(initialArchiveId);
+  const [mobileView, setMobileView] = useState<"list" | "detail">(
+    initialArchiveId ? "detail" : "list"
+  );
 
   useEffect(() => {
     const showBoardList = () => {
@@ -45,6 +49,13 @@ export function BoardView() {
     return () => window.removeEventListener("hezze:show-board-list", showBoardList);
   }, []);
 
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("hezze:board-detail", { detail: mobileView === "detail" }));
+    return () => {
+      window.dispatchEvent(new CustomEvent("hezze:board-detail", { detail: false }));
+    };
+  }, [mobileView]);
+
   const [userVote, setUserVote] = useState<RealityStatus | null>(null);
 
   const [reportModalOpen, setReportModalOpen] = useState(false);
@@ -52,6 +63,20 @@ export function BoardView() {
 
   const [timelineUrl, setTimelineUrl] = useState("");
   const [isTimelineLoading, setIsTimelineLoading] = useState(false);
+  const [activeTopic, setActiveTopic] = useState("전체");
+  const [trackingSheetOpen, setTrackingSheetOpen] = useState(false);
+  const [trackingInterval, setTrackingInterval] = useState<CheckInterval>(CheckInterval.WEEKLY);
+  const [importantOnly, setImportantOnly] = useState(true);
+
+  useEffect(() => {
+    const focusSearch = () => {
+      setMobileView("list");
+      window.setTimeout(() => document.getElementById("board-search")?.focus(), 0);
+    };
+
+    window.addEventListener("hezze:focus-search", focusSearch);
+    return () => window.removeEventListener("hezze:focus-search", focusSearch);
+  }, []);
 
   const publicArchiveList = archiveList.filter((archive) => archive.isPublic);
   const activeArchiveId = selectedArchiveId ?? publicArchiveList[0]?.id ?? null;
@@ -204,130 +229,170 @@ export function BoardView() {
 
   const filteredArchiveList = publicArchiveList.filter((archive) => {
     const query = searchQuery.toLowerCase();
-    return (
+    const matchesSearch = (
       archive.coreClaim.quote.toLowerCase().includes(query) ||
       archive.speaker.name.toLowerCase().includes(query) ||
       archive.speaker.organization.toLowerCase().includes(query) ||
       archive.evidence.sourceVenue.toLowerCase().includes(query)
     );
+    const matchesTopic = activeTopic === "전체" || archive.newsCategory?.includes(activeTopic);
+    return matchesSearch && matchesTopic;
   });
 
-  const selectedArchive = publicArchiveList.find((archive) => archive.id === activeArchiveId);
+  const selectedArchive = archiveList.find((archive) => archive.id === activeArchiveId);
 
   return (
     <main className="bg-background">
-        <div className="flex h-[calc(100dvh-177px-env(safe-area-inset-top)-env(safe-area-inset-bottom))] min-h-[420px] flex-col overflow-hidden">
-          <aside className={cn("h-full w-full shrink-0 bg-card flex-col", mobileView === "list" ? "flex" : "hidden")}>
-          <div className="p-[16px] border-b-[1px] border-border space-y-[12px]">
-            <div className="relative">
-              <Search className="absolute left-[12px] top-[10px] w-[16px] h-[16px] text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="인물, 소속, 뉴스 검색..."
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                className="pl-[36px] h-[36px] rounded-[6px] text-[13px]"
-              />
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto divide-y-[1px] divide-border/60">
-            {filteredArchiveList.map((archive) => {
-              const isSelected = archive.id === activeArchiveId;
-              const isTracked = tracked.has(archive.id);
-              return (
-                <div
-                  key={archive.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => {
-                    setSelectedArchiveId(archive.id);
-                    setErrorMessage(null);
-                    setMobileView("detail");
-                  }}
-                  className={cn(
-                    "w-full text-left p-[16px] transition-colors flex flex-col gap-[8px] cursor-pointer",
-                    isSelected ? "bg-brand-50/70 border-l-[3px] border-brand-600 pl-[13px]" : "hover:bg-muted/40"
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-[8px]">
-                    <div className="flex items-center gap-[4px]">
-                      <Badge variant="outline" className="text-[10px] py-0 px-[6px] rounded-[4px]">
-                        {archive.category === "ENTRY.QUOTE" ? "핵심 발언" : "공약 약속"}
-                      </Badge>
-                      {archive.newsCategory && (
-                        <Badge variant="secondary" className="text-[10px] py-0 px-[6px] rounded-[4px] bg-brand-50 text-brand-600 border-brand-100">
-                          {archive.newsCategory}
-                        </Badge>
-                      )}
-                    </div>
-                    <Badge className={cn("text-[10px] py-[2px] px-[6px] rounded-[4px]", getStatusColorClass(archive.realityMeter.status))}>
-                      {REALITY_STATUS_LABEL[archive.realityMeter.status]}
-                    </Badge>
-                  </div>
-                  
-                  <p className="text-[13px] font-medium text-foreground line-clamp-2 leading-relaxed">
-                    &quot;{archive.coreClaim.quote}&quot;
-                  </p>
-
-                  <div className="flex items-center justify-between text-[11px] text-muted-foreground mt-[4px]">
-                    <span className="font-semibold text-foreground/80">
-                      {archive.evidence.sourceVenue}
-                    </span>
-                    <span className="font-bold text-brand-600">
-                      팩트 지수 {archive.realityMeter.currentIndex}%
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-[4px] text-[10px] text-muted-foreground">
-                    <Clock className="h-[11px] w-[11px]" aria-hidden="true" />
-                    <time dateTime={archive.evidence.recordedAt}>
-                      {formatArchivePostedAt(archive.evidence.recordedAt)}
-                    </time>
-                  </div>
-
-                  <div className="flex items-center gap-[6px] mt-[4px]">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        toggleTracked(archive.id);
-                      }}
-                      className={cn(
-                        "flex items-center gap-[4px] rounded-[999px] border-[1px] px-[8px] py-[4px] text-[10px] font-bold transition-colors",
-                        isTracked
-                          ? "bg-brand-50 text-brand-600 border-brand-100"
-                          : "bg-card text-muted-foreground border-border hover:bg-muted/40"
-                      )}
-                      >
-                        <Pin className="w-[11px] h-[11px]" />
-                        Tomorrow
-                      </button>
-                  </div>
+        <div className={cn(
+          "flex min-h-[420px] flex-col overflow-hidden",
+          mobileView === "detail"
+            ? "h-[100dvh]"
+            : "h-[calc(100dvh-132px-env(safe-area-inset-top)-env(safe-area-inset-bottom))]"
+        )}>
+          <aside className={cn("h-full w-full shrink-0 flex-col bg-background", mobileView === "list" ? "flex" : "hidden")}>
+            <div className="space-y-[13px] border-b border-border bg-card px-[18px] pb-[14px] pt-[16px]">
+              <div className="flex items-end justify-between gap-[12px]">
+                <div>
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-brand-600">Board</p>
+                  <h1 className="mt-[2px] text-[21px] font-black tracking-[-0.04em] text-foreground">오늘 확인할 발언</h1>
                 </div>
-              );
-            })}
-
-            {filteredArchiveList.length === 0 && (
-              <div className="py-[40px] text-center text-muted-foreground text-[13px]">
-                검색 조건에 맞는 뉴스가 없습니다.
+                <span className="pb-[2px] text-[11px] font-bold text-muted-foreground">{filteredArchiveList.length}건</span>
               </div>
-            )}
-          </div>
-        </aside>
+              <div className="relative">
+                <Search className="absolute left-[12px] top-[11px] h-[16px] w-[16px] text-muted-foreground" />
+                <Input
+                  id="board-search"
+                  type="text"
+                  placeholder="인물, 키워드, 주제 검색"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  className="h-[38px] rounded-[9px] border-border bg-background pl-[36px] text-[12px] shadow-none"
+                />
+              </div>
+              <div className="flex gap-[7px] overflow-x-auto pb-[1px] [scrollbar-width:none]">
+                {["전체", "정치", "경제", "사회"].map((topic) => (
+                  <button
+                    key={topic}
+                    type="button"
+                    aria-pressed={activeTopic === topic}
+                    onClick={() => setActiveTopic(topic)}
+                    className={cn(
+                      "min-h-[36px] shrink-0 rounded-[8px] border px-[14px] text-[11px] font-extrabold transition-colors",
+                      activeTopic === topic
+                        ? "border-brand-600 bg-brand-600 text-white"
+                        : "border-border bg-card text-muted-foreground hover:border-brand-200"
+                    )}
+                  >
+                    {topic}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        <section className={cn("h-full flex-1 overflow-y-auto bg-muted/20", mobileView === "detail" ? "block" : "hidden")}>
-          <div className="sticky top-0 z-10 border-b border-border/60 bg-background/92 px-[16px] backdrop-blur-lg">
+            <div className="flex-1 space-y-[10px] overflow-y-auto px-[14px] py-[12px]">
+              {filteredArchiveList.map((archive) => {
+                const isSelected = archive.id === activeArchiveId;
+                const isSaved = mySaved.has(archive.id);
+                return (
+                  <article
+                    key={archive.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      setSelectedArchiveId(archive.id);
+                      setErrorMessage(null);
+                      setMobileView("detail");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedArchiveId(archive.id);
+                        setErrorMessage(null);
+                        setMobileView("detail");
+                      }
+                    }}
+                    className={cn(
+                      "w-full cursor-pointer rounded-[14px] border bg-card px-[15px] py-[14px] text-left transition-colors",
+                      isSelected ? "border-brand-500 ring-2 ring-brand-100" : "border-border hover:border-brand-200"
+                    )}
+                  >
+                    <div className="flex items-start gap-[10px]">
+                      <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-brand-600 text-[11px] font-extrabold text-white">
+                        {archive.speaker.name.charAt(0)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center gap-[5px]">
+                          <strong className="truncate text-[12px] font-extrabold text-foreground">{archive.speaker.name}</strong>
+                          <span className="inline-flex shrink-0 items-center gap-[3px] text-[9px] font-bold text-emerald-700">
+                            <CheckCircle2 className="h-[11px] w-[11px]" />
+                            공식 출처 확인
+                          </span>
+                        </div>
+                        <p className="mt-[1px] truncate text-[9px] text-muted-foreground">{archive.speaker.organization}</p>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label={isSaved ? "내 헷제에서 제거" : "내 헷제에 저장"}
+                        aria-pressed={isSaved}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleSaved(archive.id);
+                        }}
+                        className={cn("flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-[10px]", isSaved ? "bg-brand-50 text-brand-600" : "text-muted-foreground hover:bg-muted")}
+                      >
+                        <Bookmark className={cn("h-[17px] w-[17px]", isSaved && "fill-current")} />
+                      </button>
+                    </div>
+
+                    <p className="mt-[11px] line-clamp-2 text-[14px] font-extrabold leading-[1.45] tracking-[-0.015em] text-foreground">
+                      &quot;{archive.coreClaim.quote}&quot;
+                    </p>
+                    <p className="mt-[6px] line-clamp-2 text-[11px] leading-[1.55] text-muted-foreground">{archive.coreClaim.contextDescription}</p>
+
+                    <div className="mt-[11px] flex items-center justify-between gap-[10px] border-t border-border/70 pt-[9px]">
+                      <div className="flex min-w-0 items-center gap-[4px] text-[9px] text-muted-foreground">
+                        <Clock className="h-[11px] w-[11px] shrink-0" aria-hidden="true" />
+                        <time className="truncate" dateTime={archive.evidence.recordedAt}>{formatArchivePostedAt(archive.evidence.recordedAt)}</time>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-[5px]">
+                        {archive.newsCategory && <span className="rounded-[5px] bg-muted px-[6px] py-[3px] text-[9px] font-semibold text-muted-foreground">{archive.newsCategory}</span>}
+                        <span className="rounded-[5px] bg-brand-50 px-[6px] py-[3px] text-[9px] font-bold text-brand-700">지수 {archive.realityMeter.currentIndex}</span>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+
+              {filteredArchiveList.length === 0 && (
+                <div className="rounded-[14px] border border-dashed border-border bg-card py-[48px] text-center text-[12px] text-muted-foreground">
+                  검색 조건에 맞는 발언이 없습니다.
+                </div>
+              )}
+            </div>
+          </aside>
+
+        <section className={cn("h-full flex-1 flex-col overflow-hidden bg-background", mobileView === "detail" ? "flex" : "hidden")}>
+          <div className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-card/95 px-[10px] backdrop-blur-lg">
             <Button
               variant="ghost"
               onClick={() => setMobileView("list")}
-              className="flex items-center gap-[6px] text-[13px] text-muted-foreground hover:text-foreground pl-0 h-[44px]"
+              aria-label="발언 목록으로 돌아가기"
+              className="h-[48px] w-[48px] rounded-[10px] p-0 text-foreground"
             >
-              <ArrowLeft className="w-[16px] h-[16px]" />
-              목록으로 돌아가기
+              <ArrowLeft className="h-[19px] w-[19px]" />
+            </Button>
+            <strong className="text-[14px] font-extrabold text-foreground">발언 상세</strong>
+            <Button
+              variant="ghost"
+              onClick={() => setViralModalOpen(true)}
+              aria-label="발언 공유"
+              className="h-[48px] w-[48px] rounded-[10px] p-0 text-foreground"
+            >
+              <Share2 className="h-[18px] w-[18px]" />
             </Button>
           </div>
 
+          <div className="flex-1 overflow-y-auto">
           {errorMessage && (
             <div className="m-[24px] p-[16px] bg-red-50 text-red-600 rounded-[8px] border-[1px] border-red-200 text-[13px]">
               {errorMessage}
@@ -338,41 +403,25 @@ export function BoardView() {
             <div className="mx-auto max-w-[560px] space-y-[16px] p-[14px]">
               <div className="grid grid-cols-1 gap-[16px]">
                 <div className="space-y-[16px]">
-                  <Card className="overflow-hidden border-border/50 shadow-sm hover:shadow-md transition-shadow duration-300 rounded-[12px]">
-                    <CardHeader className="bg-muted/30 border-b-[1px] border-border/50 pb-[12px] flex flex-row items-center justify-between">
-                      <div className="flex items-center gap-[8px] text-brand-600">
-                        <FileText className="w-[18px] h-[18px]" />
-                        <CardTitle className="text-[15px] font-bold">누가 무슨 말을 했냐면요</CardTitle>
+                  <Card className="overflow-hidden rounded-[14px] border-border shadow-none">
+                    <CardContent className="p-[18px]">
+                      <div className="flex items-center justify-between gap-[10px]">
+                        <span className="inline-flex items-center gap-[5px] text-[10px] font-extrabold text-emerald-700">
+                          <CheckCircle2 className="h-[14px] w-[14px]" />
+                          공식 출처 확인
+                        </span>
+                        <span className={cn("rounded-[6px] px-[7px] py-[4px] text-[9px] font-extrabold", getStatusColorClass(selectedArchive.realityMeter.status))}>
+                          {REALITY_STATUS_LABEL[selectedArchive.realityMeter.status].replace(/^[^\s]+\s/, "")}
+                        </span>
                       </div>
-                      <Button
-                        onClick={() => setViralModalOpen(true)}
-                        size="sm"
-                        className="h-[32px] bg-brand-600 hover:bg-brand-700 text-white rounded-[6px] text-[11px] font-bold px-[10px]"
-                      >
-                        <Sparkles className="w-[12px] h-[12px] mr-[4px]" />
-                        자랑용 성지순례 카드
-                      </Button>
-                    </CardHeader>
-                    <CardContent className="pt-[24px]">
-                      {selectedArchive.evidence.sourceUrl ? (
-                        <a
-                          href={selectedArchive.evidence.sourceUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="block border-l-[4px] border-brand-500 hover:border-brand-600 pl-[16px] italic text-[18px] font-medium leading-relaxed text-foreground hover:text-brand-600 transition-colors mb-[24px] cursor-pointer"
-                        >
-                          &quot;{selectedArchive.coreClaim.quote}&quot;
-                        </a>
-                      ) : (
-                        <blockquote className="border-l-[4px] border-brand-500 pl-[16px] italic text-[18px] font-medium leading-relaxed text-foreground mb-[24px]">
-                          &quot;{selectedArchive.coreClaim.quote}&quot;
-                        </blockquote>
-                      )}
 
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-[16px] pt-[16px] border-t-[1px] border-border">
-                        <div className="flex items-center gap-[12px]">
+                      <blockquote className="mt-[18px] text-[21px] font-black leading-[1.42] tracking-[-0.035em] text-foreground">
+                        &quot;{selectedArchive.coreClaim.quote}&quot;
+                      </blockquote>
+
+                      <div className="mt-[20px] flex items-center gap-[12px] border-t border-border pt-[16px]">
                           {selectedArchive.speaker.imageUrl ? (
-                            <div className="relative w-[48px] h-[48px] rounded-full overflow-hidden border-[1px] border-border shrink-0">
+                            <div className="relative h-[44px] w-[44px] shrink-0 overflow-hidden rounded-full border border-border">
                               <Image
                                 src={selectedArchive.speaker.imageUrl}
                                 alt={selectedArchive.speaker.name}
@@ -383,69 +432,35 @@ export function BoardView() {
                               />
                             </div>
                           ) : (
-                            <div className="w-[48px] h-[48px] rounded-full bg-gradient-to-br from-brand-500 to-brand-600 flex items-center justify-center text-white font-bold text-[16px] shrink-0 border-[1px] border-brand-100 shadow-sm">
+                            <div className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full bg-brand-600 text-[14px] font-extrabold text-white">
                               {selectedArchive.speaker.name.charAt(0)}
                             </div>
                           )}
-                          <div>
+                          <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-[6px]">
-                              <span className="font-semibold text-foreground text-[14px]">
+                              <span className="text-[13px] font-extrabold text-foreground">
                                 {selectedArchive.speaker.name}
                               </span>
-                              <Badge variant="outline" className="text-[10px] py-[1px] px-[6px] rounded-[4px] border-emerald-300 text-emerald-700 bg-emerald-50">
-                                🏛️ 공식 보도 인증
-                              </Badge>
                             </div>
-                            <div className="text-[12px] text-muted-foreground">
+                            <div className="mt-[1px] truncate text-[10px] text-muted-foreground">
                               {selectedArchive.speaker.position}, {selectedArchive.speaker.organization}
                             </div>
-                            <div className="mt-[4px] flex items-center gap-[4px] text-[11px] text-muted-foreground">
+                            <div className="mt-[4px] flex items-center gap-[4px] text-[9px] text-muted-foreground">
                               <Clock className="h-[12px] w-[12px]" aria-hidden="true" />
                               <time dateTime={selectedArchive.evidence.recordedAt}>
                                 {formatArchivePostedAt(selectedArchive.evidence.recordedAt)}
                               </time>
                             </div>
                           </div>
-                        </div>
-
-                        <div className="flex w-full flex-col gap-[8px] sm:w-auto sm:flex-row">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            aria-pressed={tracked.has(selectedArchive.id)}
-                            onClick={() => toggleTracked(selectedArchive.id)}
-                            className={cn(
-                              "h-[36px] w-full shrink-0 gap-[6px] rounded-[6px] px-[12px] text-[12px] font-bold transition-colors sm:w-auto",
-                              tracked.has(selectedArchive.id)
-                                ? "border-brand-600 bg-brand-600 text-white hover:bg-brand-700 hover:text-white"
-                                : "border-brand-200 text-brand-600 hover:bg-brand-50 hover:text-brand-700"
-                            )}
-                          >
-                            <Pin className={cn("h-[14px] w-[14px]", tracked.has(selectedArchive.id) && "fill-current")} />
-                            {tracked.has(selectedArchive.id) ? "Tomorrow 추가됨" : "Tomorrow에 추가"}
-                          </Button>
-
-                          {selectedArchive.evidence.sourceUrl && (
-                            <a
-                              href={selectedArchive.evidence.sourceUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex h-[36px] w-full shrink-0 items-center justify-center gap-[6px] rounded-[6px] border-[1px] border-brand-200 px-[12px] text-[12px] font-semibold text-brand-600 transition-colors hover:bg-brand-50 sm:w-auto"
-                            >
-                              <LinkIcon className="h-[14px] w-[14px]" />
-                              원본 기사 바로가기
-                            </a>
-                          )}
-                        </div>
                       </div>
                     </CardContent>
                   </Card>
 
-                  <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-300 rounded-[12px]">
+                  <Card className="rounded-[14px] border-border shadow-none">
                     <CardHeader className="pb-[12px] border-b-[1px] border-border/50">
                       <div className="flex items-center gap-[8px] text-muted-foreground">
                         <AlertCircle className="w-[18px] h-[18px]" />
-                        <CardTitle className="text-[15px] font-bold text-foreground">한 줄로 딱 정리해 드릴게요</CardTitle>
+                        <CardTitle className="text-[14px] font-extrabold text-foreground">한 줄 요약</CardTitle>
                       </div>
                     </CardHeader>
                     <CardContent className="pt-[16px]">
@@ -507,7 +522,7 @@ export function BoardView() {
                   <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-300 rounded-[12px]">
                     <CardHeader className="pb-[12px] border-b-[1px] border-border/50">
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-[15px] font-bold">말한 뒤로 어떻게 변했을까요?</CardTitle>
+                        <CardTitle className="text-[15px] font-bold">변화 타임라인</CardTitle>
                         <Clock className="w-[16px] h-[16px] text-muted-foreground" />
                       </div>
                     </CardHeader>
@@ -594,7 +609,7 @@ export function BoardView() {
                       <div className="pt-[16px] border-t-[1px] border-border/50">
                         <form onSubmit={handleAddTimelineItem} className="space-y-[12px]">
                           <div className="space-y-[4px]">
-                            <label className="text-[12px] font-semibold text-foreground">🔗 관련된 새 뉴스 기사 링크를 넣어보세요</label>
+                            <label className="text-[12px] font-semibold text-foreground">관련된 새 뉴스 링크를 추가하세요</label>
                             <div className="flex gap-[8px]">
                               <Input
                                 type="url"
@@ -628,7 +643,7 @@ export function BoardView() {
                     <div className={cn("absolute top-0 left-0 w-full h-[4px]", getStatusIndicatorColorClass(selectedArchive.realityMeter.status))} />
                     <CardHeader className="pb-[8px] pt-[16px]">
                       <CardTitle className="text-[15px] font-bold flex justify-between items-center">
-                        📊 AI 팩트 측정기
+                        AI 팩트 측정기
                         <Badge className={cn("rounded-[4px] text-[11px] py-[2px] px-[6px]", getStatusColorClass(selectedArchive.realityMeter.status))}>
                           {REALITY_STATUS_LABEL[selectedArchive.realityMeter.status]}
                         </Badge>
@@ -637,7 +652,7 @@ export function BoardView() {
                     <CardContent className="pt-[12px] space-y-[16px]">
                       <div>
                         <div className="flex items-baseline justify-between mb-[6px]">
-                          <span className="text-[11px] text-muted-foreground font-semibold">🤖 AI 팩트 지수</span>
+                          <span className="text-[11px] text-muted-foreground font-semibold">AI 팩트 지수</span>
                           <span className="text-[20px] font-black tracking-tight text-foreground">
                             {selectedArchive.realityMeter.currentIndex}%
                           </span>
@@ -656,7 +671,7 @@ export function BoardView() {
                         return (
                           <div className="pt-[10px] border-t-[1px] border-border/40">
                             <div className="flex items-baseline justify-between mb-[6px]">
-                              <span className="text-[11px] text-muted-foreground font-semibold">👥 시민 감시단 동의율</span>
+                              <span className="text-[11px] text-muted-foreground font-semibold">시민 감시단 동의율</span>
                               <span className="text-[16px] font-bold text-emerald-600">
                                 {agreement}%
                               </span>
@@ -674,7 +689,7 @@ export function BoardView() {
 
                   <Card className="border-border/50 shadow-sm rounded-[12px]">
                     <CardHeader className="pb-[12px] border-b-[1px] border-border/50">
-                      <CardTitle className="text-[14px] font-bold">⚙️ 자동 추적 설정</CardTitle>
+                      <CardTitle className="text-[14px] font-bold">자동 추적 설정</CardTitle>
                     </CardHeader>
                     <CardContent className="pt-[16px] space-y-[12px]">
                       <div className="flex justify-between items-center text-[12px]">
@@ -725,7 +740,7 @@ export function BoardView() {
                           ) : (
                             <>
                               <Clock className="w-[12px] h-[12px] mr-[4px]" />
-                              ⚡ 지금 AI한테 최신 소식 물어보기
+                              최신 소식 다시 확인하기
                             </>
                           )}
                         </Button>
@@ -735,7 +750,7 @@ export function BoardView() {
 
                   <Card className="border-border/50 shadow-sm rounded-[12px] bg-gradient-to-br from-brand-50 to-brand-100/30 border-brand-100">
                     <CardHeader className="pb-[12px] border-b-[1px] border-brand-100/50">
-                      <CardTitle className="text-[14px] font-bold text-brand-900">📄 스마트 리포트 뽑아보기</CardTitle>
+                      <CardTitle className="text-[14px] font-bold text-brand-900">스마트 리포트</CardTitle>
                     </CardHeader>
                     <CardContent className="pt-[16px] space-y-[12px]">
                       <p className="text-[11px] text-brand-900/70 leading-relaxed">
@@ -775,13 +790,13 @@ export function BoardView() {
                                 {(() => {
                                   const rawMessage = log.message;
                                   if (rawMessage.includes("기사 분석 완료:")) {
-                                    return rawMessage.replace(/기사 분석 완료: 카테고리 \[(.*?)\], 최초 현실화 지수 \[(.*?)\%\]/, "🔍 첫 분석 완료! [$1] 소식이며, AI 팩트 지수 $2%로 추적을 시작해요.");
+                                    return rawMessage.replace(/기사 분석 완료: 카테고리 \[(.*?)\], 최초 현실화 지수 \[(.*?)\%\]/, "첫 분석 완료: [$1] 소식이며, AI 팩트 지수 $2%로 추적을 시작합니다.");
                                   }
                                   if (rawMessage.includes("정기 AI 분석 실행: 관련 새로운 뉴스 기사 발견")) {
-                                    return "🤖 AI 탐정이 새로운 관련 뉴스를 찾아서 분석했어요!";
+                                    return "새로운 관련 뉴스를 찾아 분석했습니다.";
                                   }
                                   if (rawMessage.includes("정기 AI 분석 결과 추가 변동 사항이 없습니다")) {
-                                    return "😴 AI 탐정이 최신 소식을 검색해봤는데, 아직 새로 바뀐 내용은 없어요.";
+                                    return "최신 소식을 확인했지만 아직 새로운 변화는 없습니다.";
                                   }
                                   return rawMessage;
                                 })()}
@@ -857,8 +872,122 @@ export function BoardView() {
               </p>
             </div>
           )}
+          </div>
+
+          {selectedArchive && (
+            <div className="sticky bottom-0 z-20 grid grid-cols-[1fr_auto] gap-[8px] border-t border-border bg-card/97 px-[14px] pb-[calc(12px+env(safe-area-inset-bottom))] pt-[10px] backdrop-blur-xl">
+              <Button
+                type="button"
+                aria-pressed={tracked.has(selectedArchive.id)}
+                onClick={() => {
+                  if (tracked.has(selectedArchive.id)) toggleTracked(selectedArchive.id);
+                  else {
+                    setTrackingInterval(selectedArchive.checkInterval ?? CheckInterval.WEEKLY);
+                    setTrackingSheetOpen(true);
+                  }
+                }}
+                className="h-[46px] gap-[7px] rounded-[10px] bg-brand-600 text-[12px] font-extrabold text-white shadow-none hover:bg-brand-700"
+              >
+                <Pin className={cn("h-[16px] w-[16px]", tracked.has(selectedArchive.id) && "fill-current")} />
+                {tracked.has(selectedArchive.id) ? "Tomorrow 추가됨" : "Tomorrow에 추가"}
+              </Button>
+              {selectedArchive.evidence.sourceUrl && (
+                <a
+                  href={selectedArchive.evidence.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="원본 컨텐츠 보기"
+                  className="inline-flex h-[46px] min-w-[48px] items-center justify-center gap-[6px] rounded-[10px] border border-brand-200 px-[13px] text-[11px] font-extrabold text-brand-600"
+                >
+                  <LinkIcon className="h-[17px] w-[17px]" />
+                  <span className="hidden min-[390px]:inline">원본 컨텐츠</span>
+                </a>
+              )}
+            </div>
+          )}
         </section>
       </div>
+
+      {trackingSheetOpen && selectedArchive && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45" role="presentation" onClick={() => setTrackingSheetOpen(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tracking-sheet-title"
+            onClick={(event) => event.stopPropagation()}
+            className="w-full max-w-[560px] rounded-t-[22px] bg-card px-[18px] pb-[calc(18px+env(safe-area-inset-bottom))] pt-[9px] shadow-[0_-18px_50px_rgba(15,23,42,0.18)]"
+          >
+            <div className="mx-auto h-[4px] w-[38px] rounded-full bg-slate-300" />
+            <div className="mt-[12px] flex items-start justify-between gap-[12px]">
+              <div>
+                <h2 id="tracking-sheet-title" className="text-[19px] font-black tracking-[-0.03em] text-foreground">어떻게 추적할까요?</h2>
+                <p className="mt-[4px] text-[11px] text-muted-foreground">변화가 생기면 선택한 주기에 맞춰 정리합니다.</p>
+              </div>
+              <button type="button" aria-label="추적 설정 닫기" onClick={() => setTrackingSheetOpen(false)} className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-[10px] text-muted-foreground hover:bg-muted">
+                <X className="h-[19px] w-[19px]" />
+              </button>
+            </div>
+
+            <div className="mt-[18px] space-y-[9px]">
+              {[
+                { value: CheckInterval.DAILY, title: "새로운 변화가 있을 때", description: "주요 변화가 생길 때마다 알림", icon: Radio },
+                { value: CheckInterval.WEEKLY, title: "매일 한 번 요약", description: "하루의 변화를 한 번에 정리", icon: CalendarDays },
+                { value: CheckInterval.MONTHLY, title: "주간 리포트", description: "매주 핵심 흐름을 요약", icon: ListChecks },
+              ].map((option) => {
+                const Icon = option.icon;
+                const selected = trackingInterval === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setTrackingInterval(option.value)}
+                    className={cn(
+                      "flex min-h-[64px] w-full items-center gap-[12px] rounded-[11px] border px-[13px] text-left transition-colors",
+                      selected ? "border-brand-500 bg-brand-50" : "border-border bg-card hover:border-brand-200"
+                    )}
+                  >
+                    <Icon className={cn("h-[20px] w-[20px] shrink-0", selected ? "text-brand-600" : "text-muted-foreground")} />
+                    <span className="min-w-0 flex-1">
+                      <strong className="block text-[12px] font-extrabold text-foreground">{option.title}</strong>
+                      <span className="mt-[2px] block text-[10px] text-muted-foreground">{option.description}</span>
+                    </span>
+                    {selected && <span className="flex h-[20px] w-[20px] items-center justify-center rounded-full bg-brand-600 text-white"><Check className="h-[13px] w-[13px]" /></span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-[14px] flex min-h-[56px] items-center justify-between rounded-[11px] border border-border px-[13px]">
+              <div>
+                <strong className="block text-[12px] font-extrabold text-foreground">중요 변화만 알림</strong>
+                <span className="mt-[2px] block text-[10px] text-muted-foreground">영향도가 높은 변화만 알려드려요.</span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={importantOnly}
+                onClick={() => setImportantOnly((current) => !current)}
+                className={cn("relative h-[28px] w-[48px] rounded-full transition-colors", importantOnly ? "bg-brand-600" : "bg-slate-300")}
+              >
+                <span className={cn("absolute top-[3px] h-[22px] w-[22px] rounded-full bg-white shadow-sm transition-transform", importantOnly ? "translate-x-[23px]" : "translate-x-[3px]")} />
+              </button>
+            </div>
+
+            <Button
+              type="button"
+              onClick={() => {
+                setArchiveList((current) => current.map((archive) => archive.id === selectedArchive.id ? { ...archive, checkInterval: trackingInterval } : archive));
+                if (!tracked.has(selectedArchive.id)) toggleTracked(selectedArchive.id);
+                setTrackingSheetOpen(false);
+              }}
+              className="mt-[16px] h-[48px] w-full rounded-[10px] bg-brand-600 text-[13px] font-extrabold text-white shadow-none hover:bg-brand-700"
+            >
+              Tomorrow에 추가
+            </Button>
+          </div>
+        </div>
+      )}
 
       {reportModalOpen && selectedArchive && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-[16px] overflow-y-auto no-print">

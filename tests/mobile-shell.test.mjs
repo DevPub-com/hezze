@@ -80,7 +80,7 @@ test("board detail does not duplicate icons with text emoji", async () => {
   const board = await readFile("src/components/board/BoardView.tsx", "utf8");
 
   assert.match(board, /<FileText/);
-  assert.match(board, /<Sparkles/);
+  assert.match(board, /<Share2/);
   assert.match(board, /<AlertCircle/);
   assert.match(board, /<Users/);
   assert.match(board, /<Clock/);
@@ -104,8 +104,8 @@ test("Tomorrow card actions do not duplicate the pin icon with an emoji", async 
   const board = await readFile("src/components/board/BoardView.tsx", "utf8");
   const hetjeCard = await readFile("src/components/hetje/HetjeCard.tsx", "utf8");
 
-  for (const component of [board, hetjeCard]) {
-    assert.match(component, /<Pin/);
-    assert.doesNotMatch(component, /📎 Tomorrow/);
-  }
+  assert.match(board, /<Pin/);
+  assert.match(hetjeCard, /<Bookmark/);
+  assert.doesNotMatch(board, /📎 Tomorrow/);
+  assert.doesNotMatch(hetjeCard, /📎 Tomorrow/);
 });

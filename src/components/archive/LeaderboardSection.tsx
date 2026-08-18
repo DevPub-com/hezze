@@ -1,210 +1,194 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { SpeakerRankItem, UserRankItem } from "@/domains/archive/model/archive.model";
+import { useEffect, useState } from "react";
+import { CheckCircle2, Loader2, Target, Trophy } from "lucide-react";
 import { fetchSpeakerLeaderboard, fetchUserLeaderboard } from "@/domains/archive/api/analyze.action";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Trophy, Target, Loader2 } from "lucide-react";
+import { SpeakerRankItem, UserRankItem } from "@/domains/archive/model/archive.model";
+import { cn } from "@/lib/utils";
+
+type RankingTab = "speaker" | "user";
+
+function RankNumber({ rank }: { rank: number }) {
+  return (
+    <span
+      className={cn(
+        "flex h-[32px] w-[32px] shrink-0 items-center justify-center rounded-[9px] text-[12px] font-black tabular-nums",
+        rank === 1
+          ? "bg-brand-600 text-white"
+          : rank <= 3
+            ? "bg-brand-50 text-brand-700"
+            : "bg-muted text-muted-foreground"
+      )}
+      aria-label={`${rank}위`}
+    >
+      {rank}
+    </span>
+  );
+}
 
 export function LeaderboardSection() {
-  const [activeTab, setActiveTab] = useState<"speaker" | "user">("speaker");
+  const [activeTab, setActiveTab] = useState<RankingTab>("speaker");
   const [speakerList, setSpeakerList] = useState<SpeakerRankItem[]>([]);
   const [userList, setUserList] = useState<UserRankItem[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadLeaderboardData() {
       try {
-        setIsLoading(true);
         const [speakers, users] = await Promise.all([
           fetchSpeakerLeaderboard(),
           fetchUserLeaderboard(),
         ]);
-        setSpeakerList(speakers);
-        setUserList(users);
+        if (!cancelled) {
+          setSpeakerList(speakers);
+          setUserList(users);
+        }
       } catch (error: unknown) {
         console.error("리더보드 로드 실패:", error);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     }
+
     loadLeaderboardData();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
+  const activeCount = activeTab === "speaker" ? speakerList.length : userList.length;
+
   return (
-    <div className="max-w-[1000px] mx-auto p-[16px] sm:p-[24px] space-y-[20px]">
-      <div className="flex justify-center mb-[8px]">
-        <div className="flex bg-muted/60 p-[4px] rounded-[14px] border-[1px] border-border/50">
+    <section>
+      <div className="border-b border-border bg-card px-[18px] pb-[14px] pt-[12px]">
+        <div className="flex items-end justify-between gap-[12px]">
+          <div>
+            <h1 className="text-[16px] font-black tracking-[-0.03em] text-foreground">이번 주 신뢰도 랭킹</h1>
+            <p className="mt-[3px] text-[10px] leading-[1.5] text-muted-foreground">
+              확인된 결과와 예측 적중 기록을 기준으로 집계합니다.
+            </p>
+          </div>
+          <span className="inline-flex shrink-0 items-center gap-[4px] rounded-full bg-emerald-50 px-[8px] py-[5px] text-[9px] font-extrabold text-emerald-700">
+            <CheckCircle2 className="h-[12px] w-[12px]" />
+            실시간 집계
+          </span>
+        </div>
+
+        <div className="mt-[14px] grid grid-cols-2 rounded-[10px] bg-muted p-[3px]" role="tablist" aria-label="랭킹 유형">
           <button
+            type="button"
+            data-page-filter="true"
+            role="tab"
+            aria-selected={activeTab === "speaker"}
             onClick={() => setActiveTab("speaker")}
-            className={`flex items-center space-x-[6px] px-[18px] py-[10px] rounded-[10px] text-[13px] font-bold transition-all ${
-              activeTab === "speaker"
-                ? "bg-card text-brand-600 shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
+            className={cn(
+              "flex min-h-[42px] items-center justify-center gap-[6px] rounded-[8px] text-[11px] font-extrabold transition-colors",
+              activeTab === "speaker" ? "bg-card text-brand-600 shadow-sm" : "text-muted-foreground"
+            )}
           >
-            <Trophy className="w-[16px] h-[18px]" />
-            <span>인물 팩트 타율 순위</span>
+            <Trophy className="h-[15px] w-[15px]" />
+            인물 랭킹
           </button>
           <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "user"}
             onClick={() => setActiveTab("user")}
-            className={`flex items-center space-x-[6px] px-[18px] py-[10px] rounded-[10px] text-[13px] font-bold transition-all ${
-              activeTab === "user"
-                ? "bg-card text-brand-600 shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
+            className={cn(
+              "flex min-h-[42px] items-center justify-center gap-[6px] rounded-[8px] text-[11px] font-extrabold transition-colors",
+              activeTab === "user" ? "bg-card text-brand-600 shadow-sm" : "text-muted-foreground"
+            )}
           >
-            <Target className="w-[16px] h-[18px]" />
-            <span>성지 예측 명예의 전당</span>
+            <Target className="h-[15px] w-[15px]" />
+            예측 랭킹
           </button>
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="flex flex-col items-center justify-center p-[60px] text-muted-foreground space-y-[12px]">
-          <Loader2 className="w-[32px] h-[32px] animate-spin text-brand-500" />
-          <p className="text-[13px] font-semibold">랭킹 데이터를 열심히 집계하고 있어요...</p>
+      <div className="px-[14px] py-[12px]">
+        <div className="mb-[9px] flex items-center justify-between px-[2px]">
+          <strong className="text-[12px] font-extrabold text-foreground">전체 순위</strong>
+          <span className="text-[10px] font-bold text-muted-foreground">{activeCount}명</span>
         </div>
-      ) : activeTab === "speaker" ? (
-        <Card className="border-border/50 shadow-md rounded-[16px] overflow-hidden">
-          <CardHeader className="bg-gradient-to-r from-brand-50 via-background to-background border-b-[1px] border-border/50 pb-[16px] pt-[20px]">
-            <div className="flex items-center justify-between">
-              <div className="space-y-[4px]">
-                <CardTitle className="text-[18px] font-extrabold text-foreground flex items-center gap-[8px]">
-                  <span>🏆 인물별 팩트 타율 리더보드</span>
-                </CardTitle>
-                <p className="text-[12px] text-muted-foreground">
-                  말한 공약과 발언을 진짜로 실현시킨 비율이 높은 순위예요!
-                </p>
-              </div>
-              <Badge className="bg-brand-100 text-brand-700 hover:bg-brand-100 border-brand-200 text-[11px] py-[4px] px-[10px] rounded-[20px] font-bold">
-                실시간 집계 중
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="p-[0px]">
-            {speakerList.length === 0 ? (
-              <div className="p-[40px] text-center text-muted-foreground text-[13px]">
-                아직 데이터가 모이지 않았어요. 첫 뉴스를 등록하고 팩트 타율을 확인해 보세요!
-              </div>
-            ) : (
-              <div className="divide-y-[1px] divide-border/40">
-                {speakerList.map((speakerItem, index) => {
-                  const rankNumber = index + 1;
-                  return (
-                    <div
-                      key={speakerItem.speakerName + speakerItem.organization}
-                      className="flex items-center justify-between p-[16px] sm:p-[20px] hover:bg-muted/30 transition-colors"
-                    >
-                      <div className="flex items-center space-x-[16px]">
-                        <div className="flex items-center justify-center w-[36px] h-[36px] rounded-full font-black text-[15px] shrink-0">
-                          {rankNumber === 1 ? (
-                            <span className="text-[22px]">🥇</span>
-                          ) : rankNumber === 2 ? (
-                            <span className="text-[22px]">🥈</span>
-                          ) : rankNumber === 3 ? (
-                            <span className="text-[22px]">🥉</span>
-                          ) : (
-                            <span className="text-muted-foreground font-mono">{rankNumber}</span>
-                          )}
-                        </div>
-                        <div>
-                          <div className="flex items-center space-x-[8px]">
-                            <h4 className="text-[15px] font-bold text-foreground">{speakerItem.speakerName}</h4>
-                            <span className="text-[11px] px-[6px] py-[2px] rounded-[4px] bg-muted text-muted-foreground font-medium">
-                              {speakerItem.organization}
-                            </span>
-                          </div>
-                          <p className="text-[12px] text-muted-foreground mt-[2px]">
-                            총 {speakerItem.totalClaims}건 발언 중 🎉 성공 {speakerItem.realizedClaims}건, 🚀 진행 {speakerItem.realizingClaims}건
-                          </p>
-                        </div>
-                      </div>
 
-                      <div className="text-right">
-                        <span className="block text-[10px] text-muted-foreground font-semibold">팩트 타율</span>
-                        <span className="text-[20px] font-black text-brand-600 tracking-tight">
-                          {speakerItem.factBattingAverage}%
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="border-border/50 shadow-md rounded-[16px] overflow-hidden">
-          <CardHeader className="bg-gradient-to-r from-purple-50 via-background to-background border-b-[1px] border-border/50 pb-[16px] pt-[20px]">
-            <div className="flex items-center justify-between">
-              <div className="space-y-[4px]">
-                <CardTitle className="text-[18px] font-extrabold text-foreground flex items-center gap-[8px]">
-                  <span>🔮 성지 예측 명예의 전당</span>
-                </CardTitle>
-                <p className="text-[12px] text-muted-foreground">
-                  미래의 소식 흐름을 족집게처럼 정확히 예측한 유저 랭킹보드예요!
-                </p>
-              </div>
-              <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100 border-purple-200 text-[11px] py-[4px] px-[10px] rounded-[20px] font-bold">
-                TOP 예측가
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="p-[0px]">
-            {userList.length === 0 ? (
-              <div className="p-[40px] text-center text-muted-foreground text-[13px]">
-                아직 투표 참여자가 없어요! 뉴스 카드에서 내 생각을 투표하고 1위 예측가가 되어 보세요!
-              </div>
-            ) : (
-              <div className="divide-y-[1px] divide-border/40">
-                {userList.map((userItem, index) => {
-                  const rankNumber = index + 1;
-                  return (
-                    <div
-                      key={userItem.userId}
-                      className="flex items-center justify-between p-[16px] sm:p-[20px] hover:bg-muted/30 transition-colors"
-                    >
-                      <div className="flex items-center space-x-[16px]">
-                        <div className="flex items-center justify-center w-[36px] h-[36px] rounded-full font-black text-[15px] shrink-0">
-                          {rankNumber === 1 ? (
-                            <span className="text-[22px]">👑</span>
-                          ) : rankNumber === 2 ? (
-                            <span className="text-[22px]">🌟</span>
-                          ) : rankNumber === 3 ? (
-                            <span className="text-[22px]">✨</span>
-                          ) : (
-                            <span className="text-muted-foreground font-mono">{rankNumber}</span>
-                          )}
-                        </div>
-                        <div>
-                          <div className="flex items-center space-x-[8px]">
-                            <h4 className="text-[14px] font-bold text-foreground font-mono">{userItem.userEmailMasked}</h4>
-                            <Badge variant="outline" className="text-[10px] py-[1px] px-[6px] rounded-[4px] border-purple-200 text-purple-700 bg-purple-50">
-                              {userItem.badgeTitle}
-                            </Badge>
-                          </div>
-                          <p className="text-[12px] text-muted-foreground mt-[2px]">
-                            총 {userItem.totalVotes}회 투표 중 {userItem.correctVotes}회 예측 적중!
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="text-right">
-                        <span className="block text-[10px] text-muted-foreground font-semibold">예측 적중률</span>
-                        <span className="text-[20px] font-black text-purple-600 tracking-tight">
-                          {userItem.accuracyRate}%
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-    </div>
+        {isLoading ? (
+          <div className="flex min-h-[220px] flex-col items-center justify-center gap-[10px] rounded-[12px] border border-border bg-card text-muted-foreground">
+            <Loader2 className="h-[24px] w-[24px] animate-spin text-brand-600" />
+            <p className="text-[11px] font-semibold">랭킹을 집계하고 있습니다</p>
+          </div>
+        ) : activeCount === 0 ? (
+          <div className="rounded-[12px] border border-dashed border-border bg-card px-[24px] py-[52px] text-center">
+            <strong className="block text-[14px] font-extrabold text-foreground">아직 집계된 기록이 없습니다</strong>
+            <p className="mt-[7px] text-[11px] leading-[1.6] text-muted-foreground">
+              발언의 결과가 확인되거나 예측 투표가 쌓이면 순위가 표시됩니다.
+            </p>
+          </div>
+        ) : activeTab === "speaker" ? (
+          <ol className="overflow-hidden rounded-[12px] border border-border bg-card">
+            {speakerList.map((item, index) => (
+              <li
+                key={`${item.speakerName}-${item.organization}`}
+                className="flex min-w-0 items-center gap-[11px] border-b border-border/80 px-[12px] py-[13px] last:border-b-0"
+              >
+                <RankNumber rank={index + 1} />
+                <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-600 text-[12px] font-black text-white">
+                  {item.speakerName.slice(0, 1)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex min-w-0 items-center gap-[6px]">
+                    <strong className="truncate text-[12px] font-extrabold text-foreground">{item.speakerName}</strong>
+                    <span className="truncate rounded-[5px] bg-muted px-[5px] py-[2px] text-[9px] font-semibold text-muted-foreground">
+                      {item.organization}
+                    </span>
+                  </span>
+                  <span className="mt-[3px] block truncate text-[10px] text-muted-foreground">
+                    발언 {item.totalClaims}건 · 실현 {item.realizedClaims}건 · 진행 {item.realizingClaims}건
+                  </span>
+                </span>
+                <span className="shrink-0 text-right">
+                  <span className="block text-[9px] font-semibold text-muted-foreground">신뢰도</span>
+                  <strong className="block text-[17px] font-black tracking-[-0.03em] text-brand-600 tabular-nums">
+                    {item.factBattingAverage}%
+                  </strong>
+                </span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <ol className="overflow-hidden rounded-[12px] border border-border bg-card">
+            {userList.map((item, index) => (
+              <li
+                key={item.userId}
+                className="flex min-w-0 items-center gap-[11px] border-b border-border/80 px-[12px] py-[13px] last:border-b-0"
+              >
+                <RankNumber rank={index + 1} />
+                <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-slate-800 text-[11px] font-black text-white">
+                  {item.userEmailMasked.slice(0, 1).toUpperCase()}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex min-w-0 items-center gap-[6px]">
+                    <strong className="truncate text-[12px] font-extrabold text-foreground">{item.userEmailMasked}</strong>
+                    <span className="truncate rounded-[5px] bg-brand-50 px-[5px] py-[2px] text-[9px] font-bold text-brand-700">
+                      {item.badgeTitle}
+                    </span>
+                  </span>
+                  <span className="mt-[3px] block truncate text-[10px] text-muted-foreground">
+                    투표 {item.totalVotes}회 · 적중 {item.correctVotes}회
+                  </span>
+                </span>
+                <span className="shrink-0 text-right">
+                  <span className="block text-[9px] font-semibold text-muted-foreground">적중률</span>
+                  <strong className="block text-[17px] font-black tracking-[-0.03em] text-brand-600 tabular-nums">
+                    {item.accuracyRate}%
+                  </strong>
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </section>
   );
 }

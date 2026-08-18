@@ -23,13 +23,13 @@
 }
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #f8f9fb;
+  --foreground: #111827;
   --card: #ffffff;
-  --card-foreground: #0f172a;
-  --border: #e2e8f0;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
+  --card-foreground: #111827;
+  --border: #dfe3ea;
+  --muted: #f0f2f5;
+  --muted-foreground: #687386;
 }
 
 body {
@@ -37,6 +37,7 @@ body {
   color: var(--foreground);
   font-family: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   overscroll-behavior-y: none;
+  text-rendering: optimizeLegibility;
 }
 
 button,

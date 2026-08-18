@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { BookOpen, Home, Trophy, Waypoints } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -14,11 +15,20 @@ const NAV_ITEMS = [
 
 export function BottomNavigation() {
   const pathname = usePathname();
+  const [boardDetailOpen, setBoardDetailOpen] = useState(false);
+
+  useEffect(() => {
+    const handleBoardDetail = (event: Event) => setBoardDetailOpen((event as CustomEvent<boolean>).detail);
+    window.addEventListener("hezze:board-detail", handleBoardDetail);
+    return () => window.removeEventListener("hezze:board-detail", handleBoardDetail);
+  }, []);
+
+  if (pathname === "/" && boardDetailOpen) return null;
 
   return (
     <nav
       aria-label="주요 내비게이션"
-      className="fixed inset-x-0 bottom-0 z-40 mx-auto grid w-full max-w-[560px] grid-cols-4 border-t border-border/80 bg-card/95 px-[6px] pt-[7px] pb-[calc(7px+env(safe-area-inset-bottom))] shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl"
+      className="fixed inset-x-0 bottom-0 z-40 mx-auto grid w-full max-w-[560px] grid-cols-4 border-t border-border/90 bg-card/97 px-[8px] pt-[5px] pb-[calc(5px+env(safe-area-inset-bottom))] backdrop-blur-xl"
     >
       {NAV_ITEMS.map((item) => {
         const active = item.match(pathname);
@@ -30,11 +40,10 @@ export function BottomNavigation() {
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "relative flex min-h-[49px] flex-col items-center justify-center gap-[3px] rounded-[14px] text-[10px] font-bold transition-all active:scale-95",
+              "relative flex min-h-[56px] flex-col items-center justify-center gap-[4px] text-[10px] font-bold transition-colors active:text-brand-700",
               active ? "text-brand-600" : "text-muted-foreground"
             )}
           >
-            {active && <span className="absolute inset-x-[12px] top-0 h-[28px] rounded-[12px] bg-brand-50" />}
             <Icon className="relative h-[20px] w-[20px]" strokeWidth={active ? 2.5 : 2} />
             <span className="relative whitespace-nowrap">{item.label}</span>
           </Link>

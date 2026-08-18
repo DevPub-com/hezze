@@ -12,7 +12,7 @@ test("OpenAI-compatible analysis calls use the Moonshot API configuration", asyn
 
   assert.match(source, /process\.env\.MOONSHOT_API_KEY/);
   assert.match(source, /https:\/\/api\.moonshot\.ai\/v1/);
-  assert.match(source, /process\.env\.MOONSHOT_MODEL\s*\|\|\s*"kimi-k3"/);
+  assert.match(source, /process\.env\.MOONSHOT_MODEL\s*\|\|\s*"moonshot-v1-8k"/);
   assert.doesNotMatch(source, /process\.env\.OPENAI_API_KEY/);
   assert.doesNotMatch(source, /model:\s*"gpt-4o-mini"/);
 });

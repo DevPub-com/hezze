@@ -1,71 +1,109 @@
 "use client";
 
-import { ArchiveReference, REALITY_STATUS_LABEL, RealityStatus } from "@/domains/archive/model/archive.model";
-import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import { Bookmark, CheckCircle2, Clock3 } from "lucide-react";
+import { ArchiveReference, RealityStatus } from "@/domains/archive/model/archive.model";
 import { cn } from "@/lib/utils";
-import { Clock3, Pin } from "lucide-react";
 import { useAppData } from "@/lib/app-context";
 import { formatArchivePostedAt } from "@/lib/format-archive-posted-at";
 
+const STATUS_LABEL: Record<RealityStatus, string> = {
+  [RealityStatus.REALIZING]: "진행 중",
+  [RealityStatus.FADING]: "동력 약화",
+  [RealityStatus.DEBATING]: "논쟁 중",
+  [RealityStatus.DEFUNCT]: "중단",
+  [RealityStatus.REALIZED]: "실현",
+};
+
 function statusColor(status: RealityStatus) {
   switch (status) {
-    case RealityStatus.REALIZING: return "bg-status-realizing text-white";
-    case RealityStatus.FADING: return "bg-status-fading text-white";
-    case RealityStatus.DEBATING: return "bg-status-debating text-white";
-    case RealityStatus.DEFUNCT: return "bg-status-defunct text-white";
-    case RealityStatus.REALIZED: return "bg-status-realized text-white";
-    default: return "bg-muted text-muted-foreground";
+    case RealityStatus.REALIZING:
+      return "bg-emerald-50 text-emerald-700";
+    case RealityStatus.FADING:
+      return "bg-amber-50 text-amber-700";
+    case RealityStatus.DEBATING:
+      return "bg-blue-50 text-blue-700";
+    case RealityStatus.DEFUNCT:
+      return "bg-red-50 text-red-700";
+    case RealityStatus.REALIZED:
+      return "bg-emerald-50 text-emerald-700";
+    default:
+      return "bg-muted text-muted-foreground";
   }
 }
 
 export function HetjeCard({ archive }: { archive: ArchiveReference }) {
-  const { tracked, toggleTracked } = useAppData();
-  const isTracked = tracked.has(archive.id);
+  const { mySaved, toggleSaved } = useAppData();
+  const isSaved = mySaved.has(archive.id);
 
   return (
-    <div className="border-[1px] border-border bg-card rounded-[21px] p-[16px] flex flex-col gap-[10px]">
-      <div className="flex items-center justify-between gap-[8px]">
-        <Badge variant="outline" className="text-[10px] py-0 px-[8px] rounded-[999px]">
-          {archive.evidence.sourceVenue}
-        </Badge>
-        <Badge className={cn("text-[10px] py-[2px] px-[8px] rounded-[999px]", statusColor(archive.realityMeter.status))}>
-          {REALITY_STATUS_LABEL[archive.realityMeter.status]}
-        </Badge>
+    <article className="group relative rounded-[14px] border border-border bg-card px-[15px] py-[14px] transition-colors hover:border-brand-200 focus-within:border-brand-300 focus-within:ring-2 focus-within:ring-brand-100">
+      <div className="flex items-start gap-[11px]">
+        <div className="flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-full bg-brand-600 text-[12px] font-extrabold text-white">
+          {archive.speaker.name.charAt(0)}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-[6px]">
+            <strong className="truncate text-[13px] font-extrabold text-foreground">
+              {archive.speaker.name}
+            </strong>
+            <span className="inline-flex shrink-0 items-center gap-[3px] text-[10px] font-bold text-emerald-700">
+              <CheckCircle2 className="h-[12px] w-[12px]" aria-hidden="true" />
+              공식 출처 확인
+            </span>
+          </div>
+          <p className="mt-[1px] truncate text-[10px] text-muted-foreground">
+            {archive.evidence.sourceVenue} · {archive.speaker.organization}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          aria-label={isSaved ? "내 헷제에서 제거" : "내 헷제에 저장"}
+          aria-pressed={isSaved}
+          onClick={() => toggleSaved(archive.id)}
+          className={cn(
+            "relative z-[2] flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-[10px] transition-colors",
+            isSaved ? "bg-brand-50 text-brand-600" : "text-muted-foreground hover:bg-muted"
+          )}
+        >
+          <Bookmark className={cn("h-[18px] w-[18px]", isSaved && "fill-current")} />
+        </button>
       </div>
 
-      <h3 className="text-[15px] font-bold leading-[1.35] tracking-tight text-foreground line-clamp-3">
-        &quot;{archive.coreClaim.quote}&quot;
+      <h3 className="mt-[12px] text-[15px] font-extrabold leading-[1.42] tracking-[-0.02em] text-foreground">
+        <Link
+          href={`/?archive=${encodeURIComponent(archive.id)}`}
+          aria-label={`${archive.coreClaim.quote} 상세 보기`}
+          className="after:absolute after:inset-0 after:z-[1] after:rounded-[14px] focus-visible:outline-none group-hover:text-brand-700"
+        >
+          &quot;{archive.coreClaim.quote}&quot;
+        </Link>
       </h3>
 
-      <p className="text-[12px] text-muted-foreground line-clamp-2 leading-relaxed">
+      <p className="mt-[7px] line-clamp-2 text-[12px] leading-[1.6] text-muted-foreground">
         {archive.coreClaim.contextDescription}
       </p>
 
-      <div className="flex items-center gap-[4px] text-[10px] text-muted-foreground">
-        <Clock3 className="h-[11px] w-[11px]" aria-hidden="true" />
-        <time dateTime={archive.evidence.recordedAt}>
-          {formatArchivePostedAt(archive.evidence.recordedAt)}
-        </time>
-      </div>
-
-      <div className="flex items-center justify-between mt-[2px]">
-        <span className="text-[11px] font-bold text-brand-600">
-          팩트 지수 {archive.realityMeter.currentIndex}%
-        </span>
-        <div className="flex items-center gap-[6px]">
-          <button
-            type="button"
-            onClick={() => toggleTracked(archive.id)}
-            className={cn(
-              "flex items-center gap-[4px] rounded-[999px] border-[1px] px-[8px] py-[4px] text-[10px] font-bold transition-colors",
-              isTracked ? "bg-brand-50 text-brand-600 border-brand-100" : "bg-card text-muted-foreground border-border hover:bg-muted/40"
-            )}
-          >
-            <Pin className="w-[11px] h-[11px]" />
-            Tomorrow
-          </button>
+      <div className="mt-[12px] flex items-center justify-between gap-[8px] border-t border-border/70 pt-[10px]">
+        <div className="flex min-w-0 items-center gap-[4px] text-[10px] text-muted-foreground">
+          <Clock3 className="h-[12px] w-[12px] shrink-0" aria-hidden="true" />
+          <time className="truncate" dateTime={archive.evidence.recordedAt}>
+            {formatArchivePostedAt(archive.evidence.recordedAt)}
+          </time>
+        </div>
+        <div className="flex shrink-0 items-center gap-[6px]">
+          {archive.newsCategory && (
+            <span className="rounded-[5px] bg-muted px-[6px] py-[3px] text-[9px] font-semibold text-muted-foreground">
+              {archive.newsCategory}
+            </span>
+          )}
+          <span className={cn("rounded-[5px] px-[6px] py-[3px] text-[9px] font-bold", statusColor(archive.realityMeter.status))}>
+            {STATUS_LABEL[archive.realityMeter.status]}
+          </span>
         </div>
       </div>
-    </div>
+    </article>
   );
 }

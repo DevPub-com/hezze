@@ -169,8 +169,8 @@ function AuthModal() {
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <AppDataProvider>
-      <div className="min-h-[100dvh] bg-[radial-gradient(circle_at_top,_#dbeafe_0,_#f8fafc_34%,_#eef2f7_100%)]">
-        <div className="relative mx-auto min-h-[100dvh] w-full max-w-[560px] overflow-x-hidden bg-background shadow-[0_0_60px_rgba(15,23,42,0.12)]">
+      <div className="min-h-[100dvh] bg-[#eef1f5]">
+        <div className="relative mx-auto min-h-[100dvh] w-full max-w-[560px] overflow-x-hidden bg-background shadow-[0_0_40px_rgba(15,23,42,0.08)]">
           <Topbar />
           <div className="pb-[calc(70px+env(safe-area-inset-bottom))]">{children}</div>
           <BottomNavigation />

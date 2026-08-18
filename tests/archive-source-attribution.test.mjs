@@ -18,9 +18,12 @@ test("archive cards show the original source and omit the redundant My HETJE act
   const card = await readFile("src/components/hetje/HetjeCard.tsx", "utf8");
 
   assert.match(board, /archive\.evidence\.sourceVenue/);
+  assert.match(board, /원본 컨텐츠/);
+  assert.doesNotMatch(board, /원본 기사 바로가기/);
+  assert.match(board, /sticky bottom-0/);
   assert.match(card, /archive\.evidence\.sourceVenue/);
-  assert.doesNotMatch(board, /toggleSaved/);
-  assert.doesNotMatch(card, /toggleSaved/);
+  assert.match(board, /toggleSaved/);
+  assert.match(card, /toggleSaved/);
   assert.doesNotMatch(board, /＋ My HETJE/);
   assert.doesNotMatch(card, /＋ My/);
 });

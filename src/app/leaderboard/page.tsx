@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 export default function LeaderboardPage() {
   return (
-    <div className="mx-auto max-w-[560px] px-[10px] py-[16px]">
+    <div className="mx-auto min-h-[calc(100dvh-140px)] max-w-[560px] bg-background">
       <LeaderboardSection />
     </div>
   );
